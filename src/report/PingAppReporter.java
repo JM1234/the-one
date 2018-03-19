@@ -45,10 +45,11 @@ public class PingAppReporter extends Report implements ApplicationListener {
 
 	@Override
 	public void done() {
+		
 		write("Ping stats for scenario " + getScenarioName() +
 				"\nsim_time: " + format(getSimTime()));
 		double pingProb = 0; // ping probability
-		double pongProb = 0; // pong probability
+		double pongProb =	 0; // pong probability
 		double successProb = 0;	// success probability
 
 		if (this.pingsSent > 0) {

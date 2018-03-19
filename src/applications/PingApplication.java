@@ -126,6 +126,7 @@ public class PingApplication extends Application {
 		if (msg.getTo()==host && type.equalsIgnoreCase("ping")) {
 			String id = "pong" + SimClock.getIntTime() + "-" +
 				host.getAddress();
+			
 			Message m = new Message(host, msg.getFrom(), id, getPongSize());
 			m.addProperty("type", "pong");
 			m.setAppID(APP_ID);
@@ -139,9 +140,9 @@ public class PingApplication extends Application {
 		// Received a pong reply
 		if (msg.getTo()==host && type.equalsIgnoreCase("pong")) {
 			// Send event to listeners
-			super.sendEventToListeners("GotPong", null, host);
+			super.sendEventToListeners("GotPong", null, host);	
 		}
-
+			
 		return msg;
 	}
 
@@ -174,6 +175,7 @@ public class PingApplication extends Application {
 	public void update(DTNHost host) {
 		if (this.passive) return;
 		double curTime = SimClock.getTime();
+		
 		if (curTime - this.lastPing >= this.interval) {
 			// Time to send a new ping
 			Message m = new Message(host, randomHost(), "ping" +
@@ -181,13 +183,15 @@ public class PingApplication extends Application {
 					getPingSize());
 			m.addProperty("type", "ping");
 			m.setAppID(APP_ID);
-			host.createNewMessage(m);
-
+			host.createNewMessage(m);		
+			
 			// Call listeners
 			super.sendEventToListeners("SentPing", null, host);
-
 			this.lastPing = curTime;
 		}
+		
+		
+
 	}
 
 	/**

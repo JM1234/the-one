@@ -30,7 +30,8 @@ import util.Tuple;
  * Implementation of PRoPHETv2" router as described in
  * http://tools.ietf.org/html/draft-irtf-dtnrg-prophet-09
  */
-public class ProphetV2Router extends ActiveRouter {
+public class TVProphetRouter extends ActiveRouter {
+
 	/** delivery predictability initialization constant*/
 	public static final double PEncMax = 0.5;
 	/** typical interconnection time in seconds*/
@@ -42,19 +43,28 @@ public class ProphetV2Router extends ActiveRouter {
 	Random randomGenerator = new Random();
 
 	/** Prophet router's setting namespace ({@value})*/
-	public static final String PROPHET_NS = "ProphetV2Router";
+	public static final String PROPHET_NS = "TVProphetRouter";
 	/**
 	 * Number of seconds in time unit -setting id ({@value}).
 	 * How many seconds one time unit is when calculating aging of
 	 * delivery predictions. Should be tweaked for the scenario.*/
 	public static final String SECONDS_IN_UNIT_S ="secondsInTimeUnit";
 
+	/*
+	 * TV_PROPHET CONSTANTS
+	 */
+	public static final double T_OLD = 20; //seconds
+	public static final double V_OLD = 100; //KBps
+	public static final double TV_ALPHA = 0.5;
+	public static final double TV_GAMMA = 0.98;
+	
 	/**
 	 * Transitivity scaling constant (beta) -setting id ({@value}).
 	 * Default value for setting is {@link #DEFAULT_BETA}.
 	 */
 	public static final String BETA_S = "beta";
 
+	
 	/** the value of nrof seconds in time unit -setting */
 	private int secondsInTimeUnit;
 	/** value of beta setting */
@@ -62,19 +72,32 @@ public class ProphetV2Router extends ActiveRouter {
 
 	/** delivery predictabilities */
 	private Map<DTNHost, Double> preds;
-
 	/** last encouter timestamp (sim)time */
 	private Map<DTNHost, Double> lastEncouterTime;
 
 	/** last delivery predictability update (sim)time */
 	private double lastAgeUpdate;
 
+	/** historical connection duration */
+	private Map<DTNHost, Double> tava;
+	/**historical transmission duration */
+	private Map<DTNHost, Double> vava;
+	
+	private static double indexSize;
+	private static double transferRate = 100; //KBps. bluetooth
+	private static double connectionDuration = 60; //seconds. distribution of connection duration
+	private static double startTime;
+	private static double endTime;
+	
+	private double transSize; 
+	
 	/**
 	 * Constructor. Creates a new message router based on the settings in
 	 * the given Settings object.
 	 * @param s The settings object
 	 */
-	public ProphetV2Router(Settings s) {
+	
+	public TVProphetRouter(Settings s) {
 		super(s);
 		Settings prophetSettings = new Settings(PROPHET_NS);
 		secondsInTimeUnit = prophetSettings.getInt(SECONDS_IN_UNIT_S);
@@ -87,21 +110,95 @@ public class ProphetV2Router extends ActiveRouter {
 
 		initPreds();
 		initEncTimes();
-
+		initTava();
+		initVava();
 	}
 
 	/**
 	 * Copyc onstructor.
 	 * @param r The router prototype where setting values are copied from
 	 */
-	protected ProphetV2Router(ProphetV2Router r) {
+	protected TVProphetRouter(TVProphetRouter r) {
 		super(r);
 		this.secondsInTimeUnit = r.secondsInTimeUnit;
 		this.beta = r.beta;
 		initPreds();
 		initEncTimes();
+		initTava();
+		initVava();
 	}
-
+	
+	/*
+	 * TV IMPLEMENTATION STARTS HERE
+	 */
+	@Override
+	public void changedConnection(Connection con) {
+		super.changedConnection(con);
+		
+		if (con.isUp()) {
+			DTNHost otherHost = con.getOtherNode(getHost());
+			updateDeliveryPredFor(otherHost);
+			updateTransitivePreds(otherHost);
+						
+			startTime = SimClock.getTime();
+			System.out.println("Connection is up @ router.");
+		}
+		else{
+			DTNHost otherHost = con.getOtherNode(getHost()); //this host is same with the host in up()
+			
+			endTime = SimClock.getTime();
+		
+			double duration = endTime-startTime;
+			updateTava(otherHost, duration);
+			updateVava(otherHost, con.getSpeed());
+		}
+		
+	}
+	
+	private void updateTava(DTNHost host, double tCurrent){
+		double tOld;
+		try{
+			tOld= tava.get(host); 
+		}catch(NullPointerException e){
+			tOld = T_OLD;
+		}
+		
+		double t = tOld*TV_ALPHA*TV_GAMMA + tCurrent*(1-TV_ALPHA*TV_GAMMA);	
+		tava.put(host, t);
+	}
+	
+	private void updateVava(DTNHost host, double vCurrent){
+		double vOld;
+		try{
+			vOld = vava.get(host);
+		}catch(NullPointerException e){
+			vOld = V_OLD;
+		}
+		
+		double v = vOld*TV_ALPHA*TV_GAMMA + vCurrent*(1-TV_ALPHA*TV_GAMMA);
+		vava.put(host, v);
+	}
+	
+	private void setIndexSize(){
+		indexSize = transferRate * connectionDuration;
+	}
+	
+	public double getIndexSize(){
+		return indexSize;
+	}
+	
+	public double getTransSize(DTNHost host){
+		transSize = tava.get(host) * vava.get(host) * 0.4;
+		return transSize;
+	}
+	
+	private void initTava(){
+		this.tava = new HashMap<DTNHost, Double>();
+	}
+	
+	private void initVava(){
+		this.vava = new HashMap<DTNHost, Double>();
+	}
 	/**
 	 * Initializes lastEncouterTime hash
 	 */
@@ -114,19 +211,6 @@ public class ProphetV2Router extends ActiveRouter {
 	 */
 	private void initPreds() {
 		this.preds = new HashMap<DTNHost, Double>();
-	}
-
-	@Override
-	public void changedConnection(Connection con) {
-		if (con.isUp()) {
-			DTNHost otherHost = con.getOtherNode(getHost());
-			updateDeliveryPredFor(otherHost);
-			updateTransitivePreds(otherHost);
-			System.out.println("@original router");
-		}
-		else{
-			System.out.println("Down at original router;");
-		}
 	}
 
 	/**
@@ -196,12 +280,12 @@ public class ProphetV2Router extends ActiveRouter {
 	 */
 	protected void updateTransitivePreds(DTNHost host) {
 		MessageRouter otherRouter = host.getRouter();
-		assert otherRouter instanceof ProphetV2Router :
+		assert otherRouter instanceof TVProphetRouter :
 			"PRoPHETv2 only works with other routers of same type";
 
 		double pForHost = getPredFor(host); // P(a,b)
 		Map<DTNHost, Double> othersPreds =
-			((ProphetV2Router)otherRouter).getDeliveryPreds();
+			((TVProphetRouter)otherRouter).getDeliveryPreds();
 
 		for (Map.Entry<DTNHost, Double> e : othersPreds.entrySet()) {
 			if (e.getKey() == getHost()) {
@@ -251,6 +335,7 @@ public class ProphetV2Router extends ActiveRouter {
 	@Override
 	public void update() {
 		super.update();
+	
 		if (!canStartTransfer() ||isTransferring()) {
 			return; // nothing to transfer or is currently transferring
 		}
@@ -261,8 +346,15 @@ public class ProphetV2Router extends ActiveRouter {
 		}
 
 		tryOtherMessages();
+		
 	}
 
+	public  List<Tuple<Message, Connection>> getMessagesForConnected(){
+		return super.getMessagesForConnected();
+	}
+		
+	////////////////////UNDERSTAND THIS///////////////////////////////
+	
 	/**
 	 * Tries to send all other messages to all connected hosts ordered by
 	 * their delivery probability
@@ -278,7 +370,7 @@ public class ProphetV2Router extends ActiveRouter {
 		   probability of delivery by the other host */
 		for (Connection con : getConnections()) {
 			DTNHost other = con.getOtherNode(getHost());
-			ProphetV2Router othRouter = (ProphetV2Router)other.getRouter();
+			TVProphetRouter othRouter = (TVProphetRouter)other.getRouter();
 
 			if (othRouter.isTransferring()) {
 				continue; // skip hosts that are transferring
@@ -288,9 +380,9 @@ public class ProphetV2Router extends ActiveRouter {
 				if (othRouter.hasMessage(m.getId())) {
 					continue; // skip messages that the other one has
 				}
-				if((othRouter.getPredFor(m.getTo()) >= getPredFor(m.getTo())))
+				//if prediction for this destination on other's router >= prediction for this destination on this host
+				if((othRouter.getPredFor(m.getTo()) >= getPredFor(m.getTo()))) 
 				{
-
 					messages.add(new Tuple<Message, Connection>(m,con));
 				}
 			}
@@ -316,11 +408,11 @@ public class ProphetV2Router extends ActiveRouter {
 		public int compare(Tuple<Message, Connection> tuple1,
 				Tuple<Message, Connection> tuple2) {
 			// delivery probability of tuple1's message with tuple1's connection
-			double p1 = ((ProphetV2Router)tuple1.getValue().
+			double p1 = ((TVProphetRouter)tuple1.getValue().
 					getOtherNode(getHost()).getRouter()).getPredFor(
 					tuple1.getKey().getTo());
 			// -"- tuple2...
-			double p2 = ((ProphetV2Router)tuple2.getValue().
+			double p2 = ((TVProphetRouter)tuple2.getValue().
 					getOtherNode(getHost()).getRouter()).getPredFor(
 					tuple2.getKey().getTo());
 
@@ -359,7 +451,20 @@ public class ProphetV2Router extends ActiveRouter {
 
 	@Override
 	public MessageRouter replicate() {
-		ProphetV2Router r = new ProphetV2Router(this);
+		TVProphetRouter r = new TVProphetRouter(this);
 		return r;
+	}
+	
+	public void addUrgentMessage(Message m, boolean newMessage){
+		addToMessages(m, newMessage);
+	}
+
+	public Message getStoredMessage(String id) {
+		for (Message m : getMessageCollection()){
+			if(m.getId().equals(id)){
+				return m;
+			}
+		}
+		return null;
 	}
 }

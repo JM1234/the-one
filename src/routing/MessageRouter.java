@@ -8,9 +8,11 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
+
 import core.Application;
 import core.Connection;
 import core.DTNHost;
@@ -86,7 +88,8 @@ public abstract class MessageRouter {
 	/** The messages being transferred with msgID_hostName keys */
 	private HashMap<String, Message> incomingMessages;
 	/** The messages this router is carrying */
-	private HashMap<String, Message> messages;
+//	private HashMap<String, Message> messages; 
+	private LinkedHashMap<String, Message> messages;
 	/** The messages this router has received as the final recipient */
 	private HashMap<String, Message> deliveredMessages;
 	/** The messages that Applications on this router have blacklisted */
@@ -117,13 +120,12 @@ public abstract class MessageRouter {
 		if (s.contains(B_SIZE_S)) {
 			this.bufferSize = s.getLong(B_SIZE_S);
 		}
-
 		if (s.contains(MSG_TTL_S)) {
 			this.msgTtl = s.getInt(MSG_TTL_S);
 		}
 
 		if (s.contains(SEND_QUEUE_MODE_S)) {
-
+			System.out.println("@ QUEUE MODE");
 			String mode = s.getSetting(SEND_QUEUE_MODE_S);
 
 			if (mode.trim().toUpperCase().equals(STR_Q_MODE_FIFO)) {
@@ -139,6 +141,7 @@ public abstract class MessageRouter {
 			}
 		}
 		else {
+			System.out.println("@ QUEUE MODE RANDOM");
 			sendQueueMode = Q_MODE_RANDOM;
 		}
 	}
@@ -152,7 +155,7 @@ public abstract class MessageRouter {
 	 */
 	public void init(DTNHost host, List<MessageListener> mListeners) {
 		this.incomingMessages = new HashMap<String, Message>();
-		this.messages = new HashMap<String, Message>();
+		this.messages = new LinkedHashMap<String, Message>();
 		this.deliveredMessages = new HashMap<String, Message>();
 		this.blacklistedMessages = new HashMap<String, Object>();
 		this.mListeners = mListeners;
@@ -438,7 +441,6 @@ public abstract class MessageRouter {
 	 */
 	protected void addToMessages(Message m, boolean newMessage) {
 		this.messages.put(m.getId(), m);
-
 		if (newMessage) {
 			for (MessageListener ml : this.mListeners) {
 				ml.newMessage(m);

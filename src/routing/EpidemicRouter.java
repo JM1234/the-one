@@ -4,6 +4,7 @@
  */
 package routing;
 
+import core.Connection;
 import core.Settings;
 
 /**
@@ -42,7 +43,6 @@ public class EpidemicRouter extends ActiveRouter {
 		if (exchangeDeliverableMessages() != null) {
 			return; // started a transfer, don't try others (yet)
 		}
-
 		// then try any/all message to any/all connection
 		this.tryAllMessagesToAllConnections();
 	}
@@ -52,5 +52,25 @@ public class EpidemicRouter extends ActiveRouter {
 	public EpidemicRouter replicate() {
 		return new EpidemicRouter(this);
 	}
+
+	@Override
+	public void changedConnection(Connection con) {
+		super.changedConnection(con);
+		
+//		if(con.isUp()){
+//			System.out.println("HELLO CONNECTION!!!");
+//		}	
+	}
+	
+	@Override
+	protected void transferAborted(Connection con) {
+		super.transferAborted(con);
+
+//		con.getMessage()
+//		this.getMessagesForConnected()
+//		con.getMessage()
+		System.out.println("transferred: " + con.getTotalBytesTransferred());
+	}
+	
 
 }

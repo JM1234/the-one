@@ -97,6 +97,7 @@ public abstract class ActiveRouter extends MessageRouter {
 		if (this.energy != null && con.isUp() && !con.isInitiator(getHost())) {
 			this.energy.reduceDiscoveryEnergy();
 		}
+		
 	}
 
 	@Override
@@ -291,10 +292,12 @@ public abstract class ActiveRouter extends MessageRouter {
 	 * Drops messages whose TTL is less than zero.
 	 */
 	protected void dropExpiredMessages() {
+		
 		Message[] messages = getMessageCollection().toArray(new Message[0]);
 		for (int i=0; i<messages.length; i++) {
 			int ttl = messages[i].getTtl();
 			if (ttl <= 0) {
+				System.out.println("REMOVED EXPIRED: "+messages[i].getId());
 				deleteMessage(messages[i].getId(), true);
 			}
 		}
@@ -469,6 +472,7 @@ public abstract class ActiveRouter extends MessageRouter {
 	 * was started
 	 */
 	protected Connection exchangeDeliverableMessages() {
+		System.out.println("Getting messages for this current connection.");
 		List<Connection> connections = getConnections();
 
 		if (connections.size() == 0) {
@@ -478,7 +482,7 @@ public abstract class ActiveRouter extends MessageRouter {
 		@SuppressWarnings(value = "unchecked")
 		Tuple<Message, Connection> t =
 			tryMessagesForConnected(sortByQueueMode(getMessagesForConnected()));
-
+		
 		if (t != null) {
 			return t.getValue(); // started transfer
 		}

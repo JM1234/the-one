@@ -123,6 +123,10 @@ public class Message implements Comparable<Message> {
 		return this.size;
 	}
 
+	public void setSize(int size){
+		this.size = size;
+	}
+	
 	/**
 	 * Adds a new node on the list of nodes this message has passed
 	 * @param node The node to add
@@ -358,6 +362,10 @@ public class Message implements Comparable<Message> {
 	 */
 	public void setAppID(String appID) {
 		this.appID = appID;
+	}
+	
+	public void setTo(DTNHost to){
+		this.to=to;
 	}
 
 }
