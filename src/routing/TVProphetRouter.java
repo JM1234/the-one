@@ -141,10 +141,17 @@ public class TVProphetRouter extends ActiveRouter {
 			updateTransitivePreds(otherHost);
 						
 			startTime = SimClock.getTime();
-			System.out.println("Connection is up @ router.");
+			
+//			System.out.println("CONNECTION UP");
+//			this.getMessageCollection().removeAll(this.getMessagesForConnected());
+//			System.out.println("Removed buffered messages for this destination!");
 		}
 		else{
 			DTNHost otherHost = con.getOtherNode(getHost()); //this host is same with the host in up()
+			
+//			this.getMessageCollection().removeAll(this.getMessagesForConnected());
+//			System.out.println(getHost() + " removed remaining message for " + otherHost);
+//			System.out.println("CONNECTION DOWN");
 			
 			endTime = SimClock.getTime();
 		
@@ -343,15 +350,15 @@ public class TVProphetRouter extends ActiveRouter {
 		// try messages that could be delivered to final recipient
 		if (exchangeDeliverableMessages() != null) {
 			return;
+			
 		}
-
 		tryOtherMessages();
 		
 	}
 
-	public  List<Tuple<Message, Connection>> getMessagesForConnected(){
-		return super.getMessagesForConnected();
-	}
+//	public  List<Tuple<Message, Connection>> getMessagesForConnected(){
+//		return super.getMessagesForConnected();
+//	}
 		
 	////////////////////UNDERSTAND THIS///////////////////////////////
 	
@@ -425,11 +432,12 @@ public class TVProphetRouter extends ActiveRouter {
 				return -1;
 			}
 			else {
+			
 				return 1;
 			}
 		}
 	}
-
+	
 	@Override
 	public RoutingInfo getRoutingInfo() {
 		ageDeliveryPreds();
@@ -448,15 +456,40 @@ public class TVProphetRouter extends ActiveRouter {
 		top.addMoreInfo(ri);
 		return top;
 	}
-
+	
+	public Message removeInBuffer(String id, DTNHost host){
+		return removeFromIncomingBuffer(id, host);
+	}
+	
 	@Override
 	public MessageRouter replicate() {
 		TVProphetRouter r = new TVProphetRouter(this);
 		return r;
 	}
 	
-	public void addUrgentMessage(Message m, boolean newMessage){
+	public void addUrgentMessage(Message m, boolean newMessage){ //butngi another parameter, pwd man didi nala magdelete mga diri kailangan
+//		System.out.println("Size of buffer: "+getMessageCollection().size());
+//		System.out.println("Size of deliverables " + this.getMessagesForConnected().size());
+//		
+//		if (this.canStartTransfer() && !getMessagesForConnected().isEmpty()){
+//			this.getMessageCollection().removeAll(this.getMessagesForConnected());
+//			System.out.println("We removed some of the messages!");
+//			this.sendMessage(m.getId(), m.getTo());
+//		}
+		
+//		System.out.println("Size of deliverables " + this.getMessagesForConnected().size());
+//		System.out.println("Added an urgent message.");
 		addToMessages(m, newMessage);
+		
+		//sort messages by time created
+		
+//		System.out.println("Size of queue:" + this.getMessagesForConnected().size());
+//		
+//		for(int i=0; i<this.getMessagesForConnected().size(); i++){
+//			System.out.println("On queue: "+this.getMessagesForConnected().get(i).getKey().getId());
+//		}
+//		exchangeDeliverableMessages();
+//		
 	}
 
 	public Message getStoredMessage(String id) {
@@ -467,4 +500,42 @@ public class TVProphetRouter extends ActiveRouter {
 		}
 		return null;
 	}
+	
+	
+	///////////////////////From FirstContactRouter
+	@Override
+	protected int checkReceiving(Message m, DTNHost from) {
+		int recvCheck = super.checkReceiving(m, from);
+//		System.out.println("Checking if exists @@@@: "+ this.getHost()+ ": "+hasMessage(m.getId()));
+		
+//		if(hasMessage(m.getId())){
+//			recvCheck = DENIED_OLD; //do not recieve already received message.
+//			System.out.println("denied at " + getHost() + ": "+m.getId());
+//		}
+		if (recvCheck == RCV_OK) {
+			
+			/* don't accept a message that has already traversed this node */
+			if (m.getHops().contains(getHost())) {
+				System.out.println("Hop contains this host. denied.");
+				recvCheck = DENIED_OLD;
+			}
+		}
+		return recvCheck;
+	}
+	
+	public List<Tuple<Message, Connection>> getMessagesForConnected(){
+		return super.getMessagesForConnected();		
+	}
+	
+	public void deleteAllBuffered(){
+		this.getMessageCollection().removeAll(this.getMessagesForConnected());
+		System.out.println("Removed buffered messages for this destination!");
+	}
+	
+//	
+//	@Override
+//	protected void transferDone(Connection con) {
+//		/* don't leave a copy for the sender */
+//		this.deleteMessage(con.getMessage().getId(), false);
+//	}
 }

@@ -13,7 +13,7 @@ import fragmentation.Fragment;
 public class StreamProperties {
 
 	private int playing=-1; //index currently playing
-	private double startTime;
+	private double startTime=-1;
 	private long chunkStart=-1;
 	
 	private String streamID;
@@ -80,7 +80,6 @@ public class StreamProperties {
 			temp.add(c.getChunkID());
 		}
 		Collections.sort(temp);
-		System.out.println("Buffermap content: "+temp);
 		return temp; //arrange chunks based on id
 	}
 
@@ -139,5 +138,17 @@ public class StreamProperties {
 		this.chunkStart = chunkStart;
 		if (playing<chunkStart) playing=(int) (chunkStart);
 		this.ack=chunkStart;
+	}
+	
+	public StreamChunk getChunk(double time){
+	////within boundary	
+		for(long key : receivedChunks.keySet()){
+			StreamChunk chunk = receivedChunks.get(key);
+			
+			double stime = chunk.getCreationTime();
+			if ((stime<=time) && time<stime+Stream.getStreamInterval())
+				return chunk;
+		}
+		return null;
 	}
 }

@@ -82,12 +82,19 @@ public class BroadcasterApp extends StreamingApplication {
 //				}
 
 //				else{ //send chunk
-					sendChunk(chunkNeeded, host, msg.getFrom(), true);
+				
+				ArrayList<StreamChunk> missingC = getMissingChunks(null, chunkNeeded.getChunkID()-1);
+				System.out.println("Found Missing for "+msg.getFrom());
+//					sendChunk(chunkNeeded, host, msg.getFrom(), true);
+//				for(StreamChunk c: missingC){
+//					System.out.println("CURRENTLY SENDING: "+c);
+//					sendChunk(c, host, msg.getFrom(), false);
+//				}
 //				}
 			}
 			
 			else if (msg_type.equalsIgnoreCase(HELLO)){
-//				System.out.println("Received hello from "+msg.getFrom());
+				System.out.println("Received hello from "+msg.getFrom());
 				
 				long otherAck = (long) msg.getProperty("ack");
 				int otherStatus = (int) msg.getProperty("status");
@@ -101,8 +108,11 @@ public class BroadcasterApp extends StreamingApplication {
 				else{
 					ArrayList<StreamChunk> missingC;
 					
+					//if nahulat first ever chunk
 					if (otherStatus == WatcherApp.WAITING && otherAck==-1){
 						double t = (double) msg.getProperty("startTime");
+						System.out.println("T: "+t);
+						System.out.println("Chunk needed: " + stream.getChunk(t).getChunkID());
 						long needId= stream.getChunk(t).getChunkID();
 						missingC = getMissingChunks(chunks, needId-1);
 					}
@@ -110,7 +120,7 @@ public class BroadcasterApp extends StreamingApplication {
 						missingC = getMissingChunks(chunks, otherAck);
 					}
 					
-					System.out.println("br Missing:" +missingC);
+					System.out.println("br sending the missing:" +missingC);
 
 					/////ha chunk pala ini
 					try{
@@ -122,7 +132,9 @@ public class BroadcasterApp extends StreamingApplication {
 							}
 						}
 			
+//						System.out.println("Found Missing at  "+msg.getFrom() + " : " + missingC);
 						for(StreamChunk c: missingC){
+//							System.out.println("CURRENTLY SENDING: "+c);
 							sendChunk(c, host, msg.getFrom(), false);
 						}
 						
@@ -171,13 +183,33 @@ public class BroadcasterApp extends StreamingApplication {
 				
 				stream.generateChunks(getStreamID(), fragment.getCurrIndex());
 				
+				StreamChunk latestChunk = stream.getLatestChunk();
+							
+				String id = APP_TYPE + ":chunk-" + latestChunk.getChunkID()+  " " + latestChunk.getCreationTime() + "-" +host.getAddress();
+				Message m = new Message(host, null, id, (int) latestChunk.getSize());		
+				m.addProperty("type", APP_TYPE);
+				m.setAppID(APP_ID);
+				m.addProperty("msg_type", CHUNK_SENT);
+				m.addProperty("chunk", latestChunk);	
+				host.createNewMessage(m);
+				System.out.println("Has message? "+id + " : " + host.getRouter().hasMessage(id));
+				
+//				((TVProphetRouter) host.getRouter()).addUrgentMessage(m, true);  
+				
+//				sendEventToListeners(CHUNK_DELIVERED, chunk, host);
 				if ( (stream.getNoOfChunks()%SADFragmentation.NO_OF_CHUNKS_PER_FRAG) == 0){ /////number of chunks dapat
 					long latestID = stream.getLatestChunk().getChunkID();
 					manageFragments(latestID, stream.getAccumChunkSize());
 				}
 				
 				try{
-					sendUpdateToListeners(host); ////didto ada ini dapat ha con.isUp()? diri pwd per second lang.
+//						if (((TVProphetRouter)host.getRouter()).getMessagesForConnected().size()>20
+//								&& !host.getConnections().get(0).isTransferring()){ //if damo na duro an ada ha buffer
+//							System.out.println("have to delete some messages.");
+					if (host.getConnections().size()>0){
+//						host.requestDeliverableMessages(host.getConnections().get(0));
+						sendUpdateToListeners(host, host.getConnections().get(0).getOtherNode(host)); ////didto ada ini dapat ha con.isUp()? diri pwd per second lang.
+					}	
 				}catch(NullPointerException e){}		
 			}
 			
@@ -224,18 +256,19 @@ public class BroadcasterApp extends StreamingApplication {
 
 	}
 	
-	public void sendUpdateToListeners(DTNHost host){ //
+	public void sendUpdateToListeners(DTNHost host, DTNHost listener){ //
 		HashMap<DTNHost, Long> listeners = stream.getAllListener();
 		
-		for(DTNHost listener :listeners.keySet()){
+//		for(DTNHost listener :listeners.keySet()){
 			long lastID= listeners.get(listener); //get last sent to this host
 
 			//send next chunk to listener based on last sent
 			StreamChunk chunk = stream.getChunk(lastID+1);
 			if (chunk!=null){
 				sendChunk(chunk, host, listener, false);
-			}
+				stream.setLastSent(host, lastID+1);
 		}
+//		}
 	}
 	
 	private void manageFragments(long id, int fSize){
@@ -268,55 +301,43 @@ public class BroadcasterApp extends StreamingApplication {
 		System.out.println("Sent fragment " + fID + "to "+to);
 	}
 
-	private void sendChunk(StreamChunk chunk, DTNHost host, DTNHost to, boolean first, Connection curCon){
-		String id = APP_TYPE + ":chunk-" + chunk.getChunkID() +  " " + chunk.getCreationTime() + "-" +host.getAddress();
-		
-		if (first) 
-			id = APP_TYPE + ":first " + chunk.getCreationTime() + "-" +host.getAddress();
-		
-		if (host.getRouter().hasMessage(id) ){//&& !con.isTransferring()){
-			Message m =  ((TVProphetRouter) host.getRouter()).getStoredMessage(id); ///////////returns null. kailangan ayuson
-			m.setTo(to);
-//			((TVProphetRouter) host.getRouter()).addUrgentMessage(m, false);  
-		}
-		else{	
-			Message m = new Message(host, to, id, (int) chunk.getSize());		
-			m.addProperty("type", APP_TYPE);
-			m.setAppID(APP_ID);
-			m.addProperty("msg_type", CHUNK_SENT);
-			m.addProperty("chunk", chunk);	
-			host.createNewMessage(m);
-			
-			stream.setLastSent(to, chunk.getChunkID());//to monitor sent chunks per listener
-			sendEventToListeners(CHUNK_DELIVERED, chunk, host);
-		}
-		host.getRouter().sendMessage(id, to); ///////di pa ngayan ak sure if ginuuna na ini pagsend
-	}
-	
 	protected void sendChunk(StreamChunk chunk, DTNHost host, DTNHost to, boolean first){
-		String id = APP_TYPE + ":chunk " + chunk.getCreationTime() + "-" +host.getAddress();
 		
-		if (first) 
-			id = APP_TYPE + ":first " + chunk.getCreationTime() + "-" +host.getAddress();
+		String id = APP_TYPE + ":chunk-" + chunk.getChunkID()+  " " + chunk.getCreationTime(); //+ "-" +chunk.;
 		
-		if (host.getRouter().hasMessage(id) ){//&& !con.isTransferring()){
+//		if (first) //di na ada ini kailangan 
+//			id = APP_TYPE + ":first " + chunk.getCreationTime() + "-" +host.getAddress();
+		
+		System.out.println("HAS MESSAGE? " + id + ": "+ host.getRouter().hasMessage(id));
+		
+		if (host.getRouter().hasMessage(id)){//&& !con.isTransferring()){
+			System.out.println("Message already exist.");
 			Message m =  ((TVProphetRouter) host.getRouter()).getStoredMessage(id); ///////////returns null. kailangan ayuson
-			m.setTo(to);
-			((TVProphetRouter) host.getRouter()).addUrgentMessage(m, false);  
-			
+			Message repM = m.replicate();
+			repM.setReceiveTime(0);
+			repM.setTo(to);
+			((TVProphetRouter) host.getRouter()).addUrgentMessage(repM, false);
+
+//			host.getRouter().deleteMessage(m.getId(), false);
 //			host.getRouter().sendMessage(id, to); ///////di pa ngayan ak sure if ginuuna na ini pagsend
+//			System.out.println("Start sending: "+chunk.getChunkID());
 		}
+		
 		else{	
+			System.out.println("Created new." +chunk.getChunkID());
 			Message m = new Message(host, to, id, (int) chunk.getSize());		
 			m.addProperty("type", APP_TYPE);
 			m.setAppID(APP_ID);
 			m.addProperty("msg_type", CHUNK_SENT);
 			m.addProperty("chunk", chunk);	
+//			m.setReceiveTime(0);
 			host.createNewMessage(m);
 			
-			stream.setLastSent(to, chunk.getChunkID());//to monitor sent chunks per listener
+//			((TVProphetRouter) host.getRouter()).addUrgentMessage(m, true);  
+			
 			sendEventToListeners(CHUNK_DELIVERED, chunk, host);
 		}
+
 	}
 	
 	@Override
@@ -333,7 +354,7 @@ public class BroadcasterApp extends StreamingApplication {
 		
 		ArrayList<StreamChunk> missing = new ArrayList<StreamChunk>();
 		ArrayList<StreamChunk> has = (	ArrayList<StreamChunk>) stream.getChunks();
-		
+
 		System.out.println("has: "+has.size());
 		System.out.println("from ack: "+ ack);
 		
@@ -342,11 +363,20 @@ public class BroadcasterApp extends StreamingApplication {
 //			missing.addAll((int) ack, has);
 //		}
 	
-		for(int i=(int) ack+1; i<has.size(); i++){
-			missing.add(has.get(i));
+		int i=0;
+		while(has.get(i).getChunkID()<=ack){
+			i++;
 		}
-		
-		System.out.println("sending starting: "+missing.get(0).getChunkID());
+		for (; i<has.size(); i++){
+			StreamChunk c = has.get(i);
+			try{
+				if (c.getChunkID() > ack && !chunks.contains(c)){
+					missing.add(c);
+				}
+			}catch(NullPointerException e){
+				missing.add(c);
+			}
+		}
 		return missing;
 	}
 	

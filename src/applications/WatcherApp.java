@@ -5,6 +5,8 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Random;
 
+import javax.media.control.H261Control;
+
 import core.Application;
 import core.Connection;
 import core.DTNHost;
@@ -33,7 +35,6 @@ public class WatcherApp extends StreamingApplication{
 	private int 	watcherType; //1 if listener. 0 if just a hop
 	private boolean isWatching=false;
 	private double lastTimePlayed=0;
-	private double lastHello = hello_interval;
 	private boolean helloed=false;
 	
 	private StreamProperties props; ////////properties of current stream channel. what i received, etc.
@@ -83,13 +84,12 @@ public class WatcherApp extends StreamingApplication{
 					
 					String streamID=(String) msg.getProperty("streamID");
 					props.setStreamID(streamID);
-				
-					if (!helloed) {
-						sendBuffermap(host,msg.getHops().get(msg.getHopCount()-1), props.getBufferMap(), props.getFragments());
-						System.out.println("Sending buffermap to : "+ msg.getHops().get(msg.getHopCount()-1));
-						helloed=true;
-					}
 					props.setStartTime(m.getCreationTime());
+					
+					sendBuffermap(host,msg.getHops().get(msg.getHopCount()-1), props.getBufferMap(), props.getFragments());
+					System.out.println("Sending buffermap to : "+ msg.getHops().get(msg.getHopCount()-1));
+					helloed=true;
+					
 					host.createNewMessage(m);
 //					m.setTtl(30);
 				
@@ -102,20 +102,23 @@ public class WatcherApp extends StreamingApplication{
 				System.out.println("@WATCHER--------------------");
 				StreamChunk chunk = (StreamChunk) msg.getProperty("chunk");
 				props.addChunk(chunk);
-
+				System.out.println(host+ " i received: "+chunk.getChunkID());
 				/*
 				 * dapat makausa la hya na setChunkStart
 				 */
 				if (msg.getTo() == host){
+					System.out.println("Props start time:" + props.getStartTime());
+					System.out.println("Chunk  t: "+chunk.getCreationTime());
 					if (msg.getId().contains(":first") || (chunk.getCreationTime() == props.getStartTime() && props.getAck()==-1)){
 						System.out.println("First chunk received by " + host + ":" +chunk.getChunkID());
 						props.setChunkStart(chunk.getChunkID());
+						status = PLAYING;
+						this.lastTimePlayed=SimClock.getTime();
 					}
 					else{
 						props.setAck(chunk.getChunkID());
 					}
 
-					System.out.println("Ack: "+props.getAck());
 					System.out.print(host + " updated: " + props.getBufferMap());
 //					System.out.println("ChunksReceived: "+props.getReceived().size());
 				}
@@ -165,34 +168,30 @@ public class WatcherApp extends StreamingApplication{
 					}
 					long otherAck = (long) msg.getProperty("ack");
 					int otherStatus = (int) msg.getProperty("status");
-					System.out.println("OtherAck: "+otherAck + " OtherStatus: "+otherStatus);
 					
+					System.out.println("OtherAck: "+otherAck + " OtherStatus: "+otherStatus);
+					System.out.println("Props needed exists: "+props.getReceived().contains(otherAck+1));
 					if (broadcastMsg!=null && otherStatus==-1 && otherAck==-1){ //di ak sure if amo na ghap ini ha uninterested watcher
 						System.out.println(host + "Other node has no broadcast, sending a broadcast.");
 						broadcastMsg.setTo(msg.getFrom());
 						((TVProphetRouter) host.getRouter()).addUrgentMessage(broadcastMsg.replicate(), false);
 					}
-					else if (otherStatus==WAITING && props.getReceived().contains(otherAck+1) && otherAck<=props.getAck()) {
-						System.out.println("HANDLING NODE! It's an emergency for it!");
-//						StreamChunk chunk = props.getChunk(otherAck+1);
-//						String id = APP_TYPE + ":chunk " + chunk.getCreationTime() + "-" +host.getAddress();
-						handleNode(msg, host, msg.getFrom());
-//						((TVProphetRouter) host.getRouter()).addUrgentMessage(broadcastMsg.replicate(), false);
-					}
-					else if (curCon.isInitiator(msg.getFrom())){ //if the other node is the initiator,
-						if (otherAck<=props.getAck()){ //c.size()<=props.getReceived().size() && 
-							System.out.println("Handling node!! It's the initiator!");
-							handleNode(msg, host, msg.getFrom());
-						}
-						else { //meaning mas importante tak ganap
-							System.out.println("Mas importante ak ganap." + host + "to: "+msg.getFrom());
-							sendBuffermap(host, msg.getFrom(), props.getBufferMap(), props.getFragments());
-						}
-					}
-					else{ //meaning ako nag una pag send, na weight na niya so i'm left with nothing
-						System.out.println("I have to handle this!!!");
+					else if (otherStatus==WAITING && props.getBufferMap().contains(otherAck+1) && otherAck<=props.getAck()) { //if nahulat first ever chunk || iya ack < mine
+						System.out.println("HANDLING NODE! It's an emergency for it and I have what it needs!");
 						handleNode(msg, host, msg.getFrom());
 					}
+					else if (otherStatus!=WAITING || otherAck > props.getAck()){ //mas importante iya ganap, di ko na kailanngan i evaluate
+						System.out.println("Mas importante ak ganap." + host + "to: "+msg.getFrom());
+						sendBuffermap(host, msg.getFrom(), props.getBufferMap(), props.getFragments());
+					}
+					else{
+						System.out.println("Waray ko anything na im kailangan.");
+					}
+					
+//					else{ //meaning ako nag una pag send, na weight na niya so i'm left with nothing
+//						System.out.println("Waray ko tim kailangan pero mayda ko mahahatag.");
+//						handleNode(msg, host, msg.getFrom());
+//					}
 				}catch(NullPointerException e){	}
 			}
 		}
@@ -216,6 +215,12 @@ public class WatcherApp extends StreamingApplication{
 				else{ // if (status==PLAYING)
 					status = WAITING;
 					System.out.println(host+ " waiting: "+ props.getNext());
+//					Connection con = host.getConnections().get(0); /////save connections
+//					if (con.isTransferring() && con.getMessage().){
+//						con.abortTransfer(); 
+//						sendBuffermap(host, con.getOtherNode(host), props.getBufferMap(), props.getFragments());
+//						System.out.println("Sent buffermap");
+//					}
 				}
 				System.out.println("+++++++++++++++++++++++++++++++++++++++++++++");
 			}
@@ -227,13 +232,14 @@ public class WatcherApp extends StreamingApplication{
 			Connection con = host.getConnections().get(0); /////save connections
 //			System.out.println(host + " is initiator? " + con.isInitiator(host));
 			
-			if((con.isUp() && !helloed && con.isInitiator(host))){ 
+			if((con.isUp() && !helloed && con.isInitiator(host)) || (con.isReadyForTransfer() && !helloed)){ 
 				sendBuffermap(host, con.getOtherNode(host), props.getBufferMap(), props.getFragments());
-				
-				this.lastHello = curTime;
 				helloed=true;
 				System.out.println(host + " : SENT HELLO!!!!!!!!!!!!" );
 			}	
+			if(status == WAITING){
+				sendBuffermap(host, con.getOtherNode(host), props.getBufferMap(), props.getFragments());
+			}
 		}catch(IndexOutOfBoundsException e){
 			helloed=false; //still not sure if it works in multilink
 		}catch(NullPointerException e){}
@@ -255,40 +261,34 @@ public class WatcherApp extends StreamingApplication{
 	private void sendBuffermap(DTNHost host, DTNHost to, ArrayList<Long> chunks, ArrayList<Integer> fragments){
 		String id = APP_TYPE+ ":hello" + SimClock.getIntTime() + "-" +host.getAddress();
 		
-		Message m = new Message(host, to, id, BUFFERMAP_SIZE); //buffermap size must be defined.
-		m.addProperty("type", APP_TYPE);
-		m.setAppID(APP_ID);
-		m.addProperty("msg_type", HELLO);
-		m.addProperty("status", this.status);
-		m.addProperty("buffermap", chunks); //////should be full buffermap
-//		m.addProperty("fragments", fragments);
-		m.addProperty("ack", props.getAck());
-		m.addProperty("startTime", props.getStartTime());
-		host.createNewMessage(m);
-		m.setTtl(5);
+		if(!host.getRouter().hasMessage(id)){
+			Message m = new Message(host, to, id, BUFFERMAP_SIZE); //buffermap size must be defined.
+			m.addProperty("type", APP_TYPE);
+			m.setAppID(APP_ID);
+			m.addProperty("msg_type", HELLO);
+			m.addProperty("status", this.status);
+			m.addProperty("buffermap", chunks); //////should be full buffermap
+	//		m.addProperty("fragments", fragments);
+			m.addProperty("ack", props.getAck());
+//			m.setReceiveTime(1);
+			m.addProperty("startTime", props.getStartTime());
+			host.createNewMessage(m);
+			m.setTtl(3);
+		}
 	}
 	
 	private void handleNode(Message msg, DTNHost src, DTNHost to){
 		System.out.println("@handle node");
 		
 		ArrayList<Long> c = (ArrayList<Long>) msg.getProperty("buffermap");
-		System.out.println("C: " +c);
-		ArrayList<StreamChunk> missing = getMissingChunks(c, (long) msg.getProperty("ack"));
+		ArrayList<StreamChunk> missingC = getMissingChunks(c, (long) msg.getProperty("ack"));
+
 		
-//		System.out.println("C: "+c + " Missing: "+missing.size());
-		for (StreamChunk m : missing){
+		System.out.println("@ " + to + "missing: "+missingC);
+		for (StreamChunk m : missingC){
 			sendChunk(m, src, to, false);
 		}
-		
-//		try{
-//			for (int i=0; i<missing.size();){
-//				if(!src.getConnections().get(0).isTransferring()){
-//					sendChunk(missing.get(i), src, to);
-//				}
-//			}
-//		}catch(NullPointerException e){
-////			i=missing.size();
-//		}
+
 		
 	}
 	
@@ -297,37 +297,21 @@ public class WatcherApp extends StreamingApplication{
 		
 		ArrayList<StreamChunk> missing = new ArrayList<StreamChunk>();
 		System.out.println("HAS: ");
-		ArrayList<StreamChunk> has = (ArrayList<StreamChunk>) props.getReceived();
+		ArrayList<StreamChunk> has = props.getReceived();
 		System.out.print(has.size() + "\n");
 		
 		System.out.println("Ack: "+ ack);
 		System.out.print("Props start chunk: ");
 		System.out.println(props.getStartChunk());
 		
-//		//nag out of bounds. why?
-//		if (ack>=props.getStartChunk()){ ///if has.contains(ack+1)
-//			missing.addAll((int) ack+1, has);
-//		}
-//		System.out.println("missing " +missing);
-		
-		
-		if (chunks.size()<=0){
-			missing.addAll(props.getReceived());
+		int i=0;
+		while(has.get(i).getChunkID()<=ack){
+			i++;
 		}
-		else{
-			try{
-//				Collection<StreamChunk> has = (Collection<StreamChunk>) props.getReceived();
-	
-				System.out.print("Missing chunks:" );
-				for (StreamChunk c: has){
-					if (!chunks.contains(c.getChunkID()) && c.getChunkID()>ack){
-						missing.add(c);
-						System.out.print(c.getChunkID() + ", ");
-					}
-				}
-				System.out.println();
-				
-			}catch(NullPointerException e){
+		for (; i<has.size(); i++){
+			StreamChunk c = has.get(i);
+			if (c.getChunkID() > ack && !chunks.contains(c)){
+				missing.add(c);
 			}
 		}
 		return missing;
@@ -339,7 +323,7 @@ public class WatcherApp extends StreamingApplication{
 	protected void sendChunk(StreamChunk chunk, DTNHost host, DTNHost to, boolean first){
 //		System.out.println("@ WATCHER_SENDING");
 		
-		String id = APP_TYPE + ":chunk " + chunk.getCreationTime() + "-" +host.getAddress();
+		String id = APP_TYPE + ":chunk-" + chunk.getChunkID()+  " " + chunk.getCreationTime(); //+ "-" +chunk.;
 
 		if (host.getRouter().hasMessage(id)){
 			Message m =  ((TVProphetRouter) host.getRouter()).getStoredMessage(id);

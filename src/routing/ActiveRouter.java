@@ -10,6 +10,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 
+import com.sun.org.apache.xerces.internal.util.SynchronizedSymbolTable;
+
 import routing.util.EnergyModel;
 import routing.util.MessageTransferAcceptPolicy;
 import routing.util.RoutingInfo;
@@ -297,7 +299,6 @@ public abstract class ActiveRouter extends MessageRouter {
 		for (int i=0; i<messages.length; i++) {
 			int ttl = messages[i].getTtl();
 			if (ttl <= 0) {
-				System.out.println("REMOVED EXPIRED: "+messages[i].getId());
 				deleteMessage(messages[i].getId(), true);
 			}
 		}
@@ -472,7 +473,7 @@ public abstract class ActiveRouter extends MessageRouter {
 	 * was started
 	 */
 	protected Connection exchangeDeliverableMessages() {
-		System.out.println("Getting messages for this current connection.");
+		
 		List<Connection> connections = getConnections();
 
 		if (connections.size() == 0) {

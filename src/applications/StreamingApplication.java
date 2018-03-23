@@ -3,6 +3,7 @@ package applications;
 import java.util.Random;
 
 import core.Application;
+import core.Connection;
 import core.DTNHost;
 import core.Message;
 import core.Settings;
@@ -27,6 +28,8 @@ public abstract class StreamingApplication extends Application{
 	public static final String FRAGMENT_REQUEST = "REQUEST_FRAGMENT";
 	public static final String FRAGMENT_DELIVERED = "DELIVERED_FRAGMENT";
 	public static final String HELLO = "hello";
+	public static final String REQUEST_HELLO = "requestHello";
+
 	
 	public static final String STREAM_DEST_RANGE = "destinationRange";
 	public static final String STREAM_SIZE = "streamSize";
@@ -123,4 +126,14 @@ public abstract class StreamingApplication extends Application{
 	public abstract void update(DTNHost host);
 	
 	protected abstract void sendChunk(StreamChunk chunk, DTNHost host, DTNHost to, boolean first);
+	
+
+	protected Connection getCurrConnection(DTNHost h1, DTNHost h2){
+		for(Connection c: h1.getConnections()){
+			if ((c.getOtherNode(h1)).equals(h2)){
+				return c;
+			}
+		}
+		return null;
+	}
 }

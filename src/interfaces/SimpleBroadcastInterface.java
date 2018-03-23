@@ -5,9 +5,11 @@
 package interfaces;
 
 import java.util.Collection;
+import java.util.List;
 
 import core.CBRConnection;
 import core.Connection;
+import core.ConnectionListener;
 import core.NetworkInterface;
 import core.Settings;
 
@@ -119,6 +121,16 @@ public class SimpleBroadcastInterface extends NetworkInterface {
 	 */
 	public String toString() {
 		return "SimpleBroadcastInterface " + super.toString();
+	}
+	
+//	@Override
+//	public void setClisteners(List<ConnectionListener> cListeners) {
+//		//set listener here
+//		System.out.println("I am definitely here.");
+//	}
+	
+	public void addClisteners(ConnectionListener cl){
+		super.addCListener(cl);
 	}
 
 }

@@ -514,4 +514,7 @@ abstract public class NetworkInterface implements ModuleCommunicationListener {
 			". Connections: " +	this.connections;
 	}
 
+	public void addCListener(ConnectionListener cl){
+		this.cListeners.add(cl);
+	}
 }

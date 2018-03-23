@@ -53,12 +53,16 @@ public abstract class MessageRouter {
 	public static final int Q_MODE_RANDOM = 1;
 	/** Setting value for FIFO queue mode */
 	public static final int Q_MODE_FIFO = 2;
-
+	
+	public static final int Q_MODE_PRIORITY = 3;
+	
 	/** Setting string for random queue mode */
 	public static final String STR_Q_MODE_RANDOM = "RANDOM";
 	/** Setting string for FIFO queue mode */
 	public static final String STR_Q_MODE_FIFO = "FIFO";
 
+	public static final String STR_Q_MODE_PRIORITY = "PRIORITY";
+	
 	/* Return values when asking to start a transmission:
 	 * RCV_OK (0) means that the host accepts the message and transfer started,
 	 * values < 0 mean that the  receiving host will not accept this
@@ -125,23 +129,22 @@ public abstract class MessageRouter {
 		}
 
 		if (s.contains(SEND_QUEUE_MODE_S)) {
-			System.out.println("@ QUEUE MODE");
 			String mode = s.getSetting(SEND_QUEUE_MODE_S);
-
 			if (mode.trim().toUpperCase().equals(STR_Q_MODE_FIFO)) {
 				this.sendQueueMode = Q_MODE_FIFO;
 			} else if (mode.trim().toUpperCase().equals(STR_Q_MODE_RANDOM)){
 				this.sendQueueMode = Q_MODE_RANDOM;
+			} else if (mode.trim().toUpperCase().equals(STR_Q_MODE_PRIORITY)){
+				this.sendQueueMode = Q_MODE_PRIORITY;
 			} else {
 				this.sendQueueMode = s.getInt(SEND_QUEUE_MODE_S);
-				if (sendQueueMode < 1 || sendQueueMode > 2) {
+				if (sendQueueMode < 1 || sendQueueMode > 3) {
 					throw new SettingsError("Invalid value for " +
 							s.getFullPropertyName(SEND_QUEUE_MODE_S));
 				}
 			}
 		}
 		else {
-			System.out.println("@ QUEUE MODE RANDOM");
 			sendQueueMode = Q_MODE_RANDOM;
 		}
 	}
@@ -517,7 +520,7 @@ public abstract class MessageRouter {
 	 */
 	@SuppressWarnings(value = "unchecked") /* ugly way to make this generic */
 	protected List sortByQueueMode(List list) {
-		switch (sendQueueMode) {
+ 		switch (sendQueueMode) {
 		case Q_MODE_RANDOM:
 			Collections.shuffle(list, new Random(SimClock.getIntTime()));
 			break;
@@ -543,6 +546,34 @@ public abstract class MessageRouter {
 					}
 
 					diff = m1.getReceiveTime() - m2.getReceiveTime();
+					if (diff == 0) {
+						return 0;
+					}
+					return (diff < 0 ? -1 : 1);
+				}
+			});
+			break;
+		case Q_MODE_PRIORITY:
+			Collections.sort(list,
+					new Comparator() {
+				/** Compares two tuples by their messages' creating time */
+				public int compare(Object o1, Object o2) {
+					double diff;
+					Message m1, m2;
+
+					if (o1 instanceof Tuple) {
+						m1 = ((Tuple<Message, Connection>)o1).getKey();
+						m2 = ((Tuple<Message, Connection>)o2).getKey();
+					}
+					else if (o1 instanceof Message) {
+						m1 = (Message)o1;
+						m2 = (Message)o2;
+					}
+					else {
+						throw new SimError("Invalid type of objects in " +
+								"the list");
+					}
+					diff = m1.getCreationTime() - m2.getCreationTime();
 					if (diff == 0) {
 						return 0;
 					}
@@ -581,6 +612,12 @@ public abstract class MessageRouter {
 				return 0;
 			}
 			return (diff < 0 ? -1 : 1);
+		case Q_MODE_PRIORITY:
+			double d = m1.getCreationTime() - m2.getCreationTime();
+			if (d == 0) {
+				return 0;
+			}
+			return (d < 0 ? -1 : 1);
 		/* add more queue modes here */
 		default:
 			throw new SimError("Unknown queue mode " + sendQueueMode);
