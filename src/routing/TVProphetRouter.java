@@ -11,9 +11,10 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-
+import java.util.Map.Entry;
 import java.util.Random;
 
 import routing.util.RoutingInfo;
@@ -72,6 +73,8 @@ public class TVProphetRouter extends ActiveRouter {
 
 	/** delivery predictabilities */
 	private Map<DTNHost, Double> preds;
+	/** transmission time preds */
+	private Map<DTNHost, Double> transmissionPreds; 
 	/** last encouter timestamp (sim)time */
 	private Map<DTNHost, Double> lastEncouterTime;
 
@@ -112,6 +115,7 @@ public class TVProphetRouter extends ActiveRouter {
 		initEncTimes();
 		initTava();
 		initVava();
+		initTransmissionPreds();
 	}
 
 	/**
@@ -126,6 +130,7 @@ public class TVProphetRouter extends ActiveRouter {
 		initEncTimes();
 		initTava();
 		initVava();
+		initTransmissionPreds();
 	}
 	
 	/*
@@ -139,8 +144,11 @@ public class TVProphetRouter extends ActiveRouter {
 			DTNHost otherHost = con.getOtherNode(getHost());
 			updateDeliveryPredFor(otherHost);
 			updateTransitivePreds(otherHost);
-						
+			
+			//add transitive sizes per host here
+			
 			startTime = SimClock.getTime();
+			updateTransmissionPreds(otherHost);
 			
 //			System.out.println("CONNECTION UP");
 //			this.getMessageCollection().removeAll(this.getMessagesForConnected());
@@ -163,6 +171,7 @@ public class TVProphetRouter extends ActiveRouter {
 	}
 	
 	private void updateTava(DTNHost host, double tCurrent){
+//		System.out.println("Updating tava");
 		double tOld;
 		try{
 			tOld= tava.get(host); 
@@ -176,6 +185,7 @@ public class TVProphetRouter extends ActiveRouter {
 	
 	private void updateVava(DTNHost host, double vCurrent){
 		double vOld;
+//		System.out.println("Updating tava");
 		try{
 			vOld = vava.get(host);
 		}catch(NullPointerException e){
@@ -195,17 +205,42 @@ public class TVProphetRouter extends ActiveRouter {
 	}
 	
 	public double getTransSize(DTNHost host){
-		transSize = tava.get(host) * vava.get(host) * 0.4;
+		try{
+			transSize = tava.get(host) * vava.get(host) * 0.4;
+		}catch(NullPointerException e){}
 		return transSize;
 	}
 	
+	/** updates transmission predictions */
+	private void updateTransmissionPreds(DTNHost host){
+		transmissionPreds.put(host,  getTransSize(host));
+	}
+	
+	public double getTransmissionPreds(DTNHost host){
+		return transmissionPreds.get(host);
+	}
+	
+	/**
+	 * Initializes historical contact durations
+	 */
 	private void initTava(){
 		this.tava = new HashMap<DTNHost, Double>();
 	}
 	
+	/**
+	 * Initializes historical transmission durations
+	 */
 	private void initVava(){
 		this.vava = new HashMap<DTNHost, Double>();
 	}
+	
+	/**
+	 * Initializes transmission predictions
+	 */
+	private void initTransmissionPreds(){
+		this.transmissionPreds = new HashMap<DTNHost, Double>();
+	}
+	
 	/**
 	 * Initializes lastEncouterTime hash
 	 */
@@ -316,7 +351,7 @@ public class TVProphetRouter extends ActiveRouter {
 	 */
 	private void ageDeliveryPreds() {
 		double timeDiff = (SimClock.getTime() - this.lastAgeUpdate) /
-			secondsInTimeUnit;
+			secondsInTimeUnit;	
 
 		if (timeDiff == 0) {
 			return;
@@ -343,10 +378,12 @@ public class TVProphetRouter extends ActiveRouter {
 	public void update() {
 		super.update();
 	
-		if (!canStartTransfer() ||isTransferring()) {
-			return; // nothing to transfer or is currently transferring
-		}
+//		if (!canStartTransfer() ||isTransferring()) {
+//			return; // nothing to transfer or is currently transferring
+//		}
 
+		//call exchangeUrgentMessages
+		
 		// try messages that could be delivered to final recipient
 		if (exchangeDeliverableMessages() != null) {
 			return;
@@ -356,11 +393,8 @@ public class TVProphetRouter extends ActiveRouter {
 		
 	}
 
-//	public  List<Tuple<Message, Connection>> getMessagesForConnected(){
-//		return super.getMessagesForConnected();
-//	}
-		
 	////////////////////UNDERSTAND THIS///////////////////////////////
+
 	
 	/**
 	 * Tries to send all other messages to all connected hosts ordered by
@@ -376,6 +410,7 @@ public class TVProphetRouter extends ActiveRouter {
 		/* for all connected hosts collect all messages that have a higher
 		   probability of delivery by the other host */
 		for (Connection con : getConnections()) {
+			
 			DTNHost other = con.getOtherNode(getHost());
 			TVProphetRouter othRouter = (TVProphetRouter)other.getRouter();
 
@@ -404,6 +439,7 @@ public class TVProphetRouter extends ActiveRouter {
 		return tryMessagesForConnected(messages);	// try to send messages
 	}
 
+	
 	/**
 	 * Comparator for Message-Connection-Tuples that orders the tuples by
 	 * their delivery probability by the host on the other side of the
@@ -444,7 +480,8 @@ public class TVProphetRouter extends ActiveRouter {
 		RoutingInfo top = super.getRoutingInfo();
 		RoutingInfo ri = new RoutingInfo(preds.size() +
 				" delivery prediction(s)");
-
+		RoutingInfo transSize = new RoutingInfo(transmissionPreds.size() + " transmission prediction(s)");
+		
 		for (Map.Entry<DTNHost, Double> e : preds.entrySet()) {
 			DTNHost host = e.getKey();
 			Double value = e.getValue();
@@ -452,15 +489,19 @@ public class TVProphetRouter extends ActiveRouter {
 			ri.addMoreInfo(new RoutingInfo(String.format("%s : %.6f",
 					host, value)));
 		}
+		for (Entry<DTNHost, Double> t : transmissionPreds.entrySet()){
+			DTNHost host = t.getKey();
+			Double value = t.getValue();
 
+			transSize.addMoreInfo(new RoutingInfo(String.format("%s : %.6f", host, value)));
+		}
+
+		
 		top.addMoreInfo(ri);
+		top.addMoreInfo(transSize);
 		return top;
 	}
-	
-	public Message removeInBuffer(String id, DTNHost host){
-		return removeFromIncomingBuffer(id, host);
-	}
-	
+
 	@Override
 	public MessageRouter replicate() {
 		TVProphetRouter r = new TVProphetRouter(this);
@@ -468,28 +509,7 @@ public class TVProphetRouter extends ActiveRouter {
 	}
 	
 	public void addUrgentMessage(Message m, boolean newMessage){ //butngi another parameter, pwd man didi nala magdelete mga diri kailangan
-//		System.out.println("Size of buffer: "+getMessageCollection().size());
-//		System.out.println("Size of deliverables " + this.getMessagesForConnected().size());
-//		
-//		if (this.canStartTransfer() && !getMessagesForConnected().isEmpty()){
-//			this.getMessageCollection().removeAll(this.getMessagesForConnected());
-//			System.out.println("We removed some of the messages!");
-//			this.sendMessage(m.getId(), m.getTo());
-//		}
-		
-//		System.out.println("Size of deliverables " + this.getMessagesForConnected().size());
-//		System.out.println("Added an urgent message.");
 		addToMessages(m, newMessage);
-		
-		//sort messages by time created
-		
-//		System.out.println("Size of queue:" + this.getMessagesForConnected().size());
-//		
-//		for(int i=0; i<this.getMessagesForConnected().size(); i++){
-//			System.out.println("On queue: "+this.getMessagesForConnected().get(i).getKey().getId());
-//		}
-//		exchangeDeliverableMessages();
-//		
 	}
 
 	public Message getStoredMessage(String id) {
@@ -502,26 +522,27 @@ public class TVProphetRouter extends ActiveRouter {
 	}
 	
 	
-	///////////////////////From FirstContactRouter
-	@Override
-	protected int checkReceiving(Message m, DTNHost from) {
-		int recvCheck = super.checkReceiving(m, from);
-//		System.out.println("Checking if exists @@@@: "+ this.getHost()+ ": "+hasMessage(m.getId()));
-		
-//		if(hasMessage(m.getId())){
-//			recvCheck = DENIED_OLD; //do not recieve already received message.
-//			System.out.println("denied at " + getHost() + ": "+m.getId());
+//	///////////////////////From FirstContactRouter
+//	@ time 3585, make sure not to receive a message we already have
+//	@Override
+//	protected int checkReceiving(Message m, DTNHost from) {
+//		int recvCheck = super.checkReceiving(m, from);
+////		System.out.println("Checking if exists @@@@: "+ this.getHost()+ ": "+hasMessage(m.getId()));
+//		
+////		if(hasMessage(m.getId())){
+////			recvCheck = DENIED_OLD; //do not recieve already received message.
+////			System.out.println("denied at " + getHost() + ": "+m.getId());
+////		}
+//		if (recvCheck == RCV_OK) {
+//			
+//			/* don't accept a message that has already traversed this node */
+//			if (m.getHops().contains(getHost())) {
+//				System.out.println("Hop contains this host. denied.");
+//				recvCheck = DENIED_OLD;
+//			}
 //		}
-		if (recvCheck == RCV_OK) {
-			
-			/* don't accept a message that has already traversed this node */
-			if (m.getHops().contains(getHost())) {
-				System.out.println("Hop contains this host. denied.");
-				recvCheck = DENIED_OLD;
-			}
-		}
-		return recvCheck;
-	}
+//		return recvCheck;
+//	}
 	
 	public List<Tuple<Message, Connection>> getMessagesForConnected(){
 		return super.getMessagesForConnected();		
@@ -532,10 +553,30 @@ public class TVProphetRouter extends ActiveRouter {
 		System.out.println("Removed buffered messages for this destination!");
 	}
 	
-//	
-//	@Override
-//	protected void transferDone(Connection con) {
-//		/* don't leave a copy for the sender */
-//		this.deleteMessage(con.getMessage().getId(), false);
+//	public void removeSendingConnections(ArrayList<Connection> conn){
+//		sendingConnections.removeAll(conn);
+//		System.out.println("Remove all sendingConnections.");
 //	}
+	
+	
+	public void transferAborted(Connection con) {
+		super.transferAborted(con);
+//		sendingConnections.clone();
+		System.out.println("Removing sending connections.");
+//		sendingConnections.remove(con);
+	}
+
+//	@Override
+	public void addToSendingConnections(Connection con) {
+		super.addToSendingConnections(con);
+	}
+
+	@Override	
+	protected void transferDone(Connection con) {
+		/* don't leave a copy for the sender */
+//		if (this.getMessagesForConnected().contains(con.getMessage())){
+		if(getMessage(con.getMessage().getId()) !=null ){
+			this.deleteMessage(con.getMessage().getId(), false);
+		}
+	}
 }

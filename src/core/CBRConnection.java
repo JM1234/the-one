@@ -43,6 +43,7 @@ public class CBRConnection extends Connection {
 	 * {@link MessageRouter#receiveMessage(Message, DTNHost)}
 	 */
 	public int startTransfer(DTNHost from, Message m) {
+		
 		assert this.msgOnFly == null : "Already transferring " +
 			this.msgOnFly + " from " + this.msgFromNode + " to " +
 			this.getOtherNode(this.msgFromNode) + ". Can't " +
@@ -57,7 +58,7 @@ public class CBRConnection extends Connection {
 			this.transferDoneTime = SimClock.getTime() +
 			(1.0*m.getSize()) / this.speed;
 		}
-
+		
 		return retVal;
 	}
 

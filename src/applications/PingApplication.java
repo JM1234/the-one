@@ -8,6 +8,8 @@ package applications;
 import java.util.Random;
 
 import report.PingAppReporter;
+import routing.TVProphetRouter;
+import routing.TVProphetRouterV2;
 import core.Application;
 import core.DTNHost;
 import core.Message;
@@ -129,6 +131,7 @@ public class PingApplication extends Application {
 			
 			Message m = new Message(host, msg.getFrom(), id, getPongSize());
 			m.addProperty("type", "pong");
+			m.addProperty(TVProphetRouterV2.MESSAGE_WEIGHT, 2);
 			m.setAppID(APP_ID);
 			host.createNewMessage(m);
 
@@ -178,10 +181,12 @@ public class PingApplication extends Application {
 		
 		if (curTime - this.lastPing >= this.interval) {
 			// Time to send a new ping
+			System.out.println("address" +host.getAddress());
 			Message m = new Message(host, randomHost(), "ping" +
 					SimClock.getIntTime() + "-" + host.getAddress(),
 					getPingSize());
 			m.addProperty("type", "ping");
+			m.addProperty(TVProphetRouterV2.MESSAGE_WEIGHT, host.getAddress());
 			m.setAppID(APP_ID);
 			host.createNewMessage(m);		
 			

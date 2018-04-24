@@ -1,12 +1,9 @@
 package streaming;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.Map.Entry;
-import java.util.NavigableMap;
-import java.util.TreeMap;
 
 import fragmentation.Fragment;
 
@@ -17,32 +14,22 @@ public class StreamProperties {
 	private long chunkStart=-1;
 	
 	private String streamID;
-//	private HashMap<Long, StreamChunk> receivedChunks;
-	private ArrayList<Integer> receivedFragments;
+	private ArrayList<Fragment> receivedFragments;
 	private LinkedHashMap<Long, StreamChunk> receivedChunks;
 	
 	private long ack=-1; //last consecutive sent
-	
+
 	public StreamProperties(String streamID){
 		this.streamID = streamID;
-//		receivedChunks = new HashMap<Long, StreamChunk>(); //linkedhashmap nala?
 		receivedChunks = new LinkedHashMap<Long, StreamChunk>();
-		receivedFragments = new ArrayList<Integer>();
-	
+		receivedFragments = new ArrayList<Fragment>();
 	}
 	
 	public void addChunk(StreamChunk chunk){
 		receivedChunks.put(chunk.getChunkID(), chunk);
-		
-//		System.out.print("Chunks Updated: ");
-//		for(StreamChunk c: receivedChunks.values()){
-//			System.out.print(c.getChunkID()+", ");
-//		}
-//		System.out.println();
 	}
 	
 	public void setAck(long curr){
-//		System.out.println("CURR: "+curr);
 		if (curr-ack == 1 || curr == 0){
 			ack=curr;
 		}
@@ -64,12 +51,16 @@ public class StreamProperties {
 		this.streamID = streamID;
 	}
 	
-	public void addFragment(int id){
-		receivedFragments.add(id);
+	public void addFragment(Fragment fragment){
+		receivedFragments.add(fragment);
 	}
 	
-	public ArrayList<Integer> getFragments(){
+	public ArrayList<Fragment> getFragments(){
 		return receivedFragments;
+	}
+	
+	public Fragment getFragment(int i){
+		return receivedFragments.get(i);
 	}
 	
 	//simply sending all the chunks it already has, whether bundled or not
@@ -105,19 +96,12 @@ public class StreamProperties {
 		return false;
 	}
 	
-	public void sync(Fragment f){
-		for(StreamChunk c : f.getBundle()){
-			addChunk(c);
-		}
-	}
-	
 	/////function pagkuha pinakauna na sulod han hashmap
 	public long getStartChunk(){
 		return chunkStart;
-//		return receivedChunks.keySet().iterator().next();
 	}
 	
-	public ArrayList<StreamChunk> getReceived(){  //////////
+	public ArrayList<StreamChunk> getReceived(){
 		ArrayList<StreamChunk> coll = new ArrayList<StreamChunk> (receivedChunks.values());
 		return coll;
 	}

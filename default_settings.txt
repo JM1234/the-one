@@ -3,11 +3,11 @@
 #
 
 ## Scenario settings
-Scenario.name = Test-5-nodes
+Scenario.name = DTNStreaming
 Scenario.simulateConnections = true
 Scenario.updateInterval = 1
-Scenario.endTime = 10000
-#Scenario.nrofHostGroups = 2
+Scenario.endTime = 1000
+Scenario.nrofHostGroups = 1
 
 ## Interface-specific settings:
 # type : which interface class the interface belongs to
@@ -17,14 +17,14 @@ Scenario.endTime = 10000
 # transmitRange : range of the interface (meters)
 
 # "Bluetooth" interface for all nodes
-btInterface.type = SimpleBroadcastInterface
+btInterface.type = InterferenceLimitedInterface
 # Transmit speed of 2 Mbps = 250kBps
-btInterface.transmitSpeed = 250k
+btInterface.transmitSpeed = 200k
 btInterface.transmitRange = 60
 
-wifiInterface.type = SimpleBroadcastInterface
-wifiInterface.transmitSpeed = 250M
-wifiInterface.transmitRange = 250
+wifiDirectInterface.type = InterferenceLimitedInterface
+wifiDirectInterface.transmitSpeed = 250000k
+wifiDirectInterface.transmitRange = 250
 
 ## Group-specific settings:
 # groupID : Group's identifier. Used as the prefix of host names
@@ -47,8 +47,8 @@ wifiInterface.transmitRange = 250
 
 # Common settings for all groups
 Group.movementModel = RandomWaypoint
-Group.router = TVProphetRouter
-TVProphetRouter.secondsInTimeUnit=1
+Group.router = EpidemicRouter
+TVProphetRouterV2.secondsInTimeUnit=1
 Group.bufferSize = 500M
 # All nodes have the bluetooth interface
 Group.nrofInterfaces = 1
@@ -74,7 +74,7 @@ Group.speed = 0.3, 0.3
 # seed for movement models' pseudo random number generator (default = 0)
 MovementModel.rngSeed = 1
 # World's size for Movement Models without implicit size (width, height; meters)
-MovementModel.worldSize = 450, 340
+MovementModel.worldSize = 500, 500
 # How long time to move hosts in the world before real simulation
 
 ## Message creation parameters
@@ -95,10 +95,10 @@ Events1.hosts = 0,2
 
 ## Reports - all report names have to be valid report classes
 # how many reports to load
-Report.nrofReports = 1
-Report.reportDir = reports/Test-5-nodes
+#Report.nrofReports = 1
+Report.reportDir = reports/DTNStreaming
 # Report classes to load
-Report.report1 = MessageStatsReport
+#Report.report1 =EventLogReport
 
 ## Optimization settings -- these affect the speed of the simulation
 ## see World class for details.

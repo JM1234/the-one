@@ -98,7 +98,7 @@ public class WatcherApp extends StreamingApplication{
 				broadcastMsg = msg.replicate();
 				
 			}
-			else if(msg_type.equalsIgnoreCase(CHUNK_SENT)){ //received chunks
+			else if(msg_type.equalsIgnoreCase(BROADCAST_CHUNK_SENT)){ //received chunks
 				System.out.println("@WATCHER--------------------");
 				StreamChunk chunk = (StreamChunk) msg.getProperty("chunk");
 				props.addChunk(chunk);
@@ -130,13 +130,13 @@ public class WatcherApp extends StreamingApplication{
 //				//send a requested chunk
 //			}
 
-			else if(msg_type.equalsIgnoreCase(FRAGMENT_SENT)){
+			else if(msg_type.equalsIgnoreCase(BROADCAST_FRAGMENT_SENT)){
 				////handle fragments here
 				System.out.println("Received fragments.");
 				
 				Fragment f = (Fragment) msg.getProperty("fragment");
-				props.addFragment(f.getId());
-				props.sync(f);
+				props.addFragment(f);
+//				props.sync(f);
 				
 				System.out.print("Updated: ");
 				for(long c : props.getBufferMap()){
@@ -258,7 +258,7 @@ public class WatcherApp extends StreamingApplication{
 		return props;
 	}
 	
-	private void sendBuffermap(DTNHost host, DTNHost to, ArrayList<Long> chunks, ArrayList<Integer> fragments){
+	private void sendBuffermap(DTNHost host, DTNHost to, ArrayList<Long> chunks, ArrayList<Fragment> fragments){
 		String id = APP_TYPE+ ":hello" + SimClock.getIntTime() + "-" +host.getAddress();
 		
 		if(!host.getRouter().hasMessage(id)){
@@ -286,7 +286,7 @@ public class WatcherApp extends StreamingApplication{
 		
 		System.out.println("@ " + to + "missing: "+missingC);
 		for (StreamChunk m : missingC){
-			sendChunk(m, src, to, false);
+			sendChunk(m, src, to);
 		}
 
 		
@@ -320,7 +320,7 @@ public class WatcherApp extends StreamingApplication{
 	
 	/////paano ma send an watcher, same id, or not? 
 	
-	protected void sendChunk(StreamChunk chunk, DTNHost host, DTNHost to, boolean first){
+	protected void sendChunk(StreamChunk chunk, DTNHost host, DTNHost to){
 //		System.out.println("@ WATCHER_SENDING");
 		
 		String id = APP_TYPE + ":chunk-" + chunk.getChunkID()+  " " + chunk.getCreationTime(); //+ "-" +chunk.;
@@ -338,7 +338,7 @@ public class WatcherApp extends StreamingApplication{
 			Message m = new Message(host, to, id, (int) chunk.getSize());		
 			m.addProperty("type", APP_TYPE);
 			m.setAppID(APP_ID);
-			m.addProperty("msg_type", CHUNK_SENT);
+//			m.addProperty("msg_type", CHUNK_SENT);
 			m.addProperty("chunk", chunk);	
 			host.createNewMessage(m);
 			

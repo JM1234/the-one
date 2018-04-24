@@ -69,8 +69,8 @@ public class BroadcasterApp extends StreamingApplication {
 			if (msg_type.equalsIgnoreCase(BROADCAST_REQUEST)  && msg.getTo()==host){
 				//register new listener
 				StreamProperties props = new StreamProperties(streamID);
-				stream.registerListener(msg.getFrom(), props);
-			
+//				stream.registerListener(msg.getFrom(), props);
+
 				double time = msg.getCreationTime();
 				StreamChunk chunkNeeded = stream.getChunk(time);
 				
@@ -135,7 +135,7 @@ public class BroadcasterApp extends StreamingApplication {
 //						System.out.println("Found Missing at  "+msg.getFrom() + " : " + missingC);
 						for(StreamChunk c: missingC){
 //							System.out.println("CURRENTLY SENDING: "+c);
-							sendChunk(c, host, msg.getFrom(), false);
+							sendChunk(c, host, msg.getFrom());
 						}
 						
 					}catch(IndexOutOfBoundsException i){}
@@ -151,18 +151,7 @@ public class BroadcasterApp extends StreamingApplication {
 
 				}
 			}
-			
-			else if (msg_type.equalsIgnoreCase(CHUNK_REQUEST)){				
-				/////received a buffermap
-			}	
-
-			else if(msg_type.equalsIgnoreCase(FRAGMENT_REQUEST)){
-				
-			}
-			
-			else if (msg_type.equalsIgnoreCase(FRAGMENT_SENT)){
-				
-			}
+	
 		}
 		
 		return msg;
@@ -189,7 +178,7 @@ public class BroadcasterApp extends StreamingApplication {
 				Message m = new Message(host, null, id, (int) latestChunk.getSize());		
 				m.addProperty("type", APP_TYPE);
 				m.setAppID(APP_ID);
-				m.addProperty("msg_type", CHUNK_SENT);
+//				m.addProperty("msg_type", CHUNK_SENT);
 				m.addProperty("chunk", latestChunk);	
 				host.createNewMessage(m);
 				System.out.println("Has message? "+id + " : " + host.getRouter().hasMessage(id));
@@ -257,17 +246,17 @@ public class BroadcasterApp extends StreamingApplication {
 	}
 	
 	public void sendUpdateToListeners(DTNHost host, DTNHost listener){ //
-		HashMap<DTNHost, Long> listeners = stream.getAllListener();
+//		HashMap<DTNHost, Long> listeners = stream.getAllListener();
 		
 //		for(DTNHost listener :listeners.keySet()){
-			long lastID= listeners.get(listener); //get last sent to this host
+//			long lastID= listeners.get(listener); //get last sent to this host
 
 			//send next chunk to listener based on last sent
-			StreamChunk chunk = stream.getChunk(lastID+1);
-			if (chunk!=null){
-				sendChunk(chunk, host, listener, false);
-				stream.setLastSent(host, lastID+1);
-		}
+//			StreamChunk chunk = stream.getChunk(lastID+1);
+//			if (chunk!=null){
+//				sendChunk(chunk, host, listener);
+//				stream.setLastUpdate(host, lastID+1);
+//		}
 //		}
 	}
 	
@@ -292,7 +281,7 @@ public class BroadcasterApp extends StreamingApplication {
 		Message m = new Message(host, to, mID, fragment.getFragSize());
 		m.addProperty("type", APP_TYPE);
 		m.setAppID(APP_ID);
-		m.addProperty("msg_type", FRAGMENT_SENT);
+//		m.addProperty("msg_type", FRAGMENT_SENT);
 		m.addProperty("fragment", f);
 		if (mID.contains("first")) m.addProperty("streamID", streamID); //streamID dapat
 		
@@ -301,7 +290,7 @@ public class BroadcasterApp extends StreamingApplication {
 		System.out.println("Sent fragment " + fID + "to "+to);
 	}
 
-	protected void sendChunk(StreamChunk chunk, DTNHost host, DTNHost to, boolean first){
+	protected void sendChunk(StreamChunk chunk, DTNHost host, DTNHost to){
 		
 		String id = APP_TYPE + ":chunk-" + chunk.getChunkID()+  " " + chunk.getCreationTime(); //+ "-" +chunk.;
 		
@@ -328,7 +317,7 @@ public class BroadcasterApp extends StreamingApplication {
 			Message m = new Message(host, to, id, (int) chunk.getSize());		
 			m.addProperty("type", APP_TYPE);
 			m.setAppID(APP_ID);
-			m.addProperty("msg_type", CHUNK_SENT);
+//			m.addProperty("msg_type", CHUNK_SENT);
 			m.addProperty("chunk", chunk);	
 //			m.setReceiveTime(0);
 			host.createNewMessage(m);

@@ -2,6 +2,7 @@ package applications;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
 
@@ -12,14 +13,16 @@ import core.DTNHost;
 import core.Message;
 import core.Settings;
 import core.SimClock;
+import fragmentation.Fragment;
 import fragmentation.SADFragmentation;
 import routing.TVProphetRouter;
+import routing.TVProphetRouterV2;
 import streaming.Stream;
 import streaming.StreamChunk;
 import streaming.StreamProperties;
 import util.Tuple;
 
-public class BroadcasterAppV2 extends StreamingApplication implements ConnectionListener{
+public class BroadcasterAppV2 extends StreamingApplication{
 
 	public static final String STREAM_TIME = "streamTime";
 	
@@ -35,20 +38,19 @@ public class BroadcasterAppV2 extends StreamingApplication implements Connection
 	private int connectionSize;
 	
 	private DTNHost curHost;
-//	private HashMap<DTNHost, Boolean> helloed;
 	private ArrayList<DTNHost> receivedHello;
-//	private boolean helloed=false;
 	private boolean isListener=false;
-	
+	private HashMap<DTNHost, Integer> bufferCtr; //counter for buffer per node
+
 	public BroadcasterAppV2(Settings s) {
 		super(s);
 		
 		fragment = new SADFragmentation();
 		r=new Random();
-		sTime = s.getDouble("streamTime") * r.nextDouble(); //time to start broadcasting
+		sTime = 0; //s.getDouble("streamTime") * r.nextDouble(); //time to start broadcasting
 		System.out.println("STIME: "+sTime);
 		receivedHello = new ArrayList<DTNHost>();
-//		helloed = new HashMap<DTNHost, Boolean>();
+		bufferCtr = new HashMap<DTNHost, Integer>();
 	}
 
 	public BroadcasterAppV2(BroadcasterAppV2 a) {
@@ -60,7 +62,7 @@ public class BroadcasterAppV2 extends StreamingApplication implements Connection
 		fragment = new SADFragmentation();
 		sTime = a.getSTime();
 		receivedHello = new ArrayList<DTNHost>();
-//		helloed = new HashMap<DTNHost, Boolean>();
+		bufferCtr = new HashMap<DTNHost, Integer>();
 	}
 	
 	@Override
@@ -72,86 +74,39 @@ public class BroadcasterAppV2 extends StreamingApplication implements Connection
 			if(type.equals(APP_TYPE)){
 				String msg_type = (String) msg.getProperty("msg_type");
 				
-				if (msg_type.equalsIgnoreCase(BROADCAST_REQUEST)  && msg.getTo()==host){
-					System.out.println(host + " Received a request for broadcast.");
-					//register listener
-					StreamProperties props = new StreamProperties(streamID);
-					stream.registerListener(msg.getFrom(), props);
-				
-					//send first ever waiting
-					double t = msg.getCreationTime();
-					long needId = stream.getChunk(t).getChunkID();
-					ArrayList<StreamChunk> missingC = getMissingChunks(null, needId-1);
-
-					System.out.print("@ register _ found missing: ");
-					System.out.println("Chunk needed: " + stream.getChunk(t).getChunkID());
-					
-					/////ha chunk pala ini
-					for(StreamChunk c: missingC){
-						sendChunk(c, host, msg.getFrom(), false);
-					}
-				}
 		
-				else if(msg_type.equalsIgnoreCase(HELLO)){
+				if (msg_type.equalsIgnoreCase(HELLO)){
 					System.out.println(host + " Received a hello! :D");
-					
-//					helloed=true;
 					
 					long otherAck = (long) msg.getProperty("ack");
 					int otherStatus = (int) msg.getProperty("status");
 					ArrayList<Long> chunks = ((ArrayList<Long>) msg.getProperty("buffermap"));
 				
-					if (broadcasted && otherStatus==-1 && otherAck==-1){
+					if (broadcasted && otherStatus==-1 && otherAck==-1){ //if otherNode is not listening yet
 						stream.setTo(msg.getFrom());
 						Message m = stream.replicate();
-						((TVProphetRouter) host.getRouter()).addUrgentMessage(m, false);
+						((TVProphetRouterV2) host.getRouter()).addUrgentMessage(m, false);
 					}
-					else{
-						ArrayList<StreamChunk> missingC;
-						
-						if (otherStatus == WatcherApp.WAITING && otherAck==-1){ //if nahulat first ever chunk
-							double t = (double) msg.getProperty("startTime");
-							System.out.println("T: "+t);
-							System.out.println("Chunk needed: " + stream.getChunk(t).getChunkID());
-							long needId= stream.getChunk(t).getChunkID();
-							missingC = getMissingChunks(chunks, needId-1);
-						}
-						else{ //there is something i could offer for future needs?
-							missingC = getMissingChunks(chunks, otherAck);
-//							System.out.println("Other ack: " + otherAck + " First missing: "+missingC.get(0).getChunkID());
-							
-						}
-
-//						System.out.print("Found missing: ");
-						/////ha chunk pala ini
-						System.out.println("REMOVING BUFFERED");
-						removeBufferedMessages(host, missingC.get(0).getChunkID());
-						for(StreamChunk c: missingC){
-//							System.out.print(c.getChunkID() + ",");
-							sendChunk(c, host, msg.getFrom(), false);
-						}
-//						System.out.println("");
+					else{ //tell the otherNode what I have
+						sendBuffermap(host, msg.getFrom());
 					}
-					
 					receivedHello.add(msg.getFrom());
 				}
 				
-				else if (msg_type.equals(WatcherAppV2.URGENT_HELLO)){
-					System.out.println(host + " received urgent. Must send new: " + msg.getReceiveTime());
-					long otherAck = (long) msg.getProperty("ack");
+				else if (msg_type.equalsIgnoreCase(BROADCAST_REQUEST)){
+					long sInterest = (long) msg.getProperty("sInterest");
+					long eInterest = (long) msg.getProperty("eInterest");
 					
-					ArrayList<Long> chunks = ((ArrayList<Long>) msg.getProperty("buffermap"));
-					ArrayList<StreamChunk> missingC = getMissingChunks(chunks, otherAck);
+					System.out.println("ReceivedRequest from "+msg.getFrom());
+					//evaluate if fragment or chunk it isesend
 					
-					System.out.print("Found urgent: ");
-					/////ha chunk pala ini
-					for(StreamChunk c: missingC){
-						System.out.print(c.getChunkID() + ",");
-						sendChunk(c, host, msg.getFrom(), false);
+					//send chunks
+					for(long i=sInterest; i<=eInterest; i++){
+						StreamChunk c = stream.getChunk(i);
+						sendChunk(c, host, msg.getFrom()); //simply sending. no buffer limit yet
 					}
-					System.out.println("");
 				}
-					
+				
 			}
 		}catch(NullPointerException e){}
 		return msg;
@@ -159,11 +114,6 @@ public class BroadcasterAppV2 extends StreamingApplication implements Connection
 
 	@Override
 	public void update(DTNHost host) {
-		if (!isListener){
-			host.getInterface(1).addCListener(this);
-			isListener=true;
-		}
-		
 		double curTime = SimClock.getTime();
 		
 		if (curTime >= sTime && !broadcasted){
@@ -174,48 +124,24 @@ public class BroadcasterAppV2 extends StreamingApplication implements Connection
 		if(broadcasted){
 			if (curTime - stream.getTimeLastStream() >= Stream.getStreamInterval()){ //for every interval
 				stream.generateChunks(getStreamID(), fragment.getCurrIndex());
-			
+				
+				checkHelloedConnection(host);
 				try{
 					for (Connection c : host.getConnections()){
-						curHost = c.getOtherNode(host);
-						
-						//remove something on hello
-						if (c.isUp()  && stream.getAllListener().containsKey(curHost) 
-								&& receivedHello.contains(curHost)){ //kailangan ig limit to listeners only
-							sendChunk(stream.getLatestChunk(), host, c.getOtherNode(host), false);
+						DTNHost otherHost = c.getOtherNode(host);
+
+						if (c.isUp() && hasHelloed(c.getOtherNode(host))) {
+							updateHello(host, otherHost);
 						}
 					}
 				}catch(IndexOutOfBoundsException e){
-					curHost=null; //reset currHost
-//					helloed=false;
-					receivedHello.clear();
+				}
+				
+				if ( (stream.getNoOfChunks()%SADFragmentation.NO_OF_CHUNKS_PER_FRAG) == 0){ /////number of chunks dapat
+					long latestID = stream.getLatestChunk().getChunkID();
+					manageFragments(latestID, stream.getAccumChunkSize());
 				}
 			}
-		
-//				Connection con = host.getConnections().get(0);
-//				DTNHost otherNode = con.getOtherNode(host);
-//				
-//	
-//				//if connection is up
-//				
-//				if (con.isUp() && con.getOtherNode(host).equals(otherNode)){
-//					if (!otherNode.getRouter().hasMessage(stream.getId()) && con.isInitiator(host)){
-//						System.out.println("Other node has broadcast msg: "+con.getOtherNode(host).getRouter().hasMessage(stream.getId()) 
-//								 + " & " + host +" is the initiator");
-//						Message m = stream.replicate();
-//						m.setTo(con.getOtherNode(host));
-//						((TVProphetRouter) host.getRouter()).addUrgentMessage(m, false);
-//					}
-//					else if (con.isInitiator(host) && !con.isTransferring()){
-//						System.out.println("Just sending a request hello.");
-//						String id = APP_TYPE + ":" + REQUEST_HELLO +  "-" + SimClock.getTime();
-//						Message m = new Message(host, otherNode, id, SIMPLE_MSG_SIZE);
-//						m.setAppID(APP_ID);
-//						m.addProperty("msg_type", REQUEST_HELLO);
-//						((TVProphetRouter) host.getRouter()).addUrgentMessage(m, false);
-//					}	
-//				}
-//			}catch(IndexOutOfBoundsException e){}
 		}
 	}
 	
@@ -226,6 +152,9 @@ public class BroadcasterAppV2 extends StreamingApplication implements Connection
 		stream.addProperty("type", APP_TYPE);
 		stream.addProperty("msg_type", BROADCAST_LIVE);
 		stream.addProperty("streamID", getStreamID());
+		stream.addProperty("stream_name", "tempstream");
+		stream.addProperty(TVProphetRouterV2.MESSAGE_WEIGHT, 1);
+		stream.addProperty("time_started", SimClock.getIntTime());
 		stream.setAppID(APP_ID);
 		stream.startLiveStream();
 		host.createNewMessage(stream); //must override, meaning start a broadcast that a stream is initiated from this peer
@@ -234,53 +163,100 @@ public class BroadcasterAppV2 extends StreamingApplication implements Connection
 
 	}
 	
+	public void updateHello(DTNHost host, DTNHost otherHost){
+		int curTime = SimClock.getIntTime();
+		
+		if (curTime - sentHello.get(otherHost) >= HELLO_UPDATE){ //if it's time to send an updated HELLO
+			System.out.println(host +" sending an updated hello to "+ otherHost + " @ " + curTime);
+			sendBuffermap(host, otherHost);  
+			sentHello.put(otherHost, SimClock.getIntTime());
+		}
+	}
+	
+	private Message sendBuffermap(DTNHost host, DTNHost to){
+		String id = APP_TYPE+ ":hello" + + SimClock.getIntTime() +"-" +host.getAddress(); //+ SimClock.getIntTime()
+		
+			Message m = new Message(host, to, id, BUFFERMAP_SIZE); //buffermap size must be defined.
+			m.addProperty("type", APP_TYPE);
+			m.setAppID(APP_ID);
+			m.addProperty("msg_type", HELLO);
+			m.addProperty("status", -1);
+//			m.addProperty("buffermap", chunks); //////should be full buffermap
+			m.addProperty("ack", stream.getLatestChunk().getChunkID());
+			m.addProperty("watcherType", -1); //this should not be sent?
+			m.addProperty(TVProphetRouterV2.MESSAGE_WEIGHT, 1);
+			host.createNewMessage(m);
+			m.setTtl(5);
+			
+			sentHello.put(to, SimClock.getIntTime());
+			return m;
+	}
+	
+	private void manageFragments(long id, int fSize){
+		ArrayList<StreamChunk> bundle = new ArrayList<StreamChunk>();
+		long boundary=id;
+		
+		for(int i=0; i<fragment.NO_OF_CHUNKS_PER_FRAG; i++, boundary--){
+			bundle.add(stream.getChunk(id-boundary));
+		}
+		
+		//sort fragments
+		fragment.setFragmentSize(fSize);
+		fragment.createFragment(bundle);
+		stream.resetAccumChunkSize();
+	}
+	
+	public void sendFragment(int fID, DTNHost host, DTNHost to, int fragmentLevel){
+		Fragment f = fragment.getFragment(fID);
+		String mID = APP_TYPE + ":fragment " + f.getTimeCreated() + "-" +host.getAddress();
+		
+		Message m = new Message(host, to, mID, fragment.getFragSize());
+		m.addProperty("type", APP_TYPE);
+		m.setAppID(APP_ID);
+		m.addProperty("msg_type", BROADCAST_FRAGMENT_SENT);
+		m.addProperty("fragment", f);
+		m.addProperty("f_level", fragmentLevel);
+		host.createNewMessage(m);
+		
+		sendEventToListeners(FRAGMENT_DELIVERED, fragment, host); //not yet handled on report
+		System.out.println("Sent fragment " + fID + "to "+to);
+	}
+
 	public void sendUpdateToListeners(StreamChunk chunk, DTNHost host, DTNHost listener){
-		sendChunk(chunk, host, listener, false);
+		sendChunk(chunk, host, listener);
 	}
 	
 	@Override
-	protected void sendChunk(StreamChunk chunk, DTNHost host, DTNHost to, boolean first) {
+	protected void sendChunk(StreamChunk chunk, DTNHost host, DTNHost to) {
 		
 		String id = APP_TYPE + ":chunk-" + chunk.getChunkID()+  " " + chunk.getCreationTime(); //+ "-" +chunk.;
-			
-//		if (host.getRouter().hasMessage(id)){
-//			Message m =  ((TVProphetRouter) host.getRouter()).getStoredMessage(id); ///////////returns null. kailangan ayuson
-//			Message repM = m.replicate();
-//			repM.setTo(to);
-//			System.out.println("Message already exists. Replicated." + m.getId());
-//			((TVProphetRouter) host.getRouter()).addUrgentMessage(repM, false);
-//
-////			System.out.println("RECEIVE TIME: " + host + " : "+repM.getReceiveTime());
+	
+//		if(bufferCtr.get(to) < 10){
+//			if (host.getRouter().hasMessage(id)){
+//				Message m =  ((TVProphetRouterV2) host.getRouter()).getStoredMessage(id);
+//				m.setTo(to);
+//				System.out.println(m + "exists for "+ m.getTo() + " . Rtime: "+m.getReceiveTime());
+//	
+//				Message repM = m.replicate();
+//				repM.setTo(to);
+//				host.getRouter().deleteMessage(m.getId(), false);
+////				((TVProphetRouterV2) host.getRouter()).addUrgentMessage(repM, false);
+//				System.out.println(repM + "replicated for "+ m.getTo() + " . Rtime: "+repM.getReceiveTime());
+//			}
+//	
+//			else if (!host.getRouter().hasMessage(id)){
+				System.out.println("Created new message to send." +chunk.getChunkID());
+				Message m = new Message(host, to, id, (int) chunk.getSize());		
+				m.addProperty("type", APP_TYPE);
+				m.setAppID(APP_ID);
+				m.addProperty("msg_type", BROADCAST_CHUNK_SENT);
+				m.addProperty("chunk", chunk);	
+				m.addProperty(TVProphetRouterV2.MESSAGE_WEIGHT, 3);
+				host.createNewMessage(m);
+	
+				sendEventToListeners(CHUNK_DELIVERED, chunk, host);
+//			}
 //		}
-//		
-//		else{	
-		if (host.getRouter().hasMessage(id)){
-			Message m =  ((TVProphetRouter) host.getRouter()).getStoredMessage(id);
-//			m.setReceiveTime(SimClock.getIntTime());
-			m.setTo(to);
-			System.out.println(m + "exists for "+ m.getTo() + " . Rtime: "+m.getReceiveTime());
-
-			Message repM = m.replicate();
-			repM.setTo(to);
-			host.getRouter().deleteMessage(m.getId(), false);
-			((TVProphetRouter) host.getRouter()).addUrgentMessage(repM, false);
-			System.out.println(repM + "replicated for "+ m.getTo() + " . Rtime: "+repM.getReceiveTime());
-
-		}
-		else if (!host.getRouter().hasMessage(id)){
-			System.out.println("Created new message to send." +chunk.getChunkID());
-			Message m = new Message(host, to, id, (int) chunk.getSize());		
-			m.addProperty("type", APP_TYPE);
-			m.setAppID(APP_ID);
-			m.addProperty("msg_type", CHUNK_SENT);
-			m.addProperty("chunk", chunk);	
-			
-			host.createNewMessage(m);
-			System.out.println("RECEIVE TIME: "+ host + " : " + m.getReceiveTime() + " Creation time: "+m.getCreationTime());
-//			((TVProphetRouter) host.getRouter()).addUrgentMessage(m, true);  
-			
-			sendEventToListeners(CHUNK_DELIVERED, chunk, host);
-		}
 	}
 
 	private ArrayList<StreamChunk> getMissingChunks(ArrayList<Long> chunks, long ack){
@@ -293,7 +269,7 @@ public class BroadcasterAppV2 extends StreamingApplication implements Connection
 			i++;
 		}
 
-		for (; i<has.size(); i++){
+		for (int ctr = 0; i<has.size() && ctr<10 ; i++, ctr++){ //nag aassume na tanan na missing is consecutive from ack
 			StreamChunk c = has.get(i);
 			try{
 				if (c.getChunkID() > ack && !chunks.contains(c)){
@@ -306,25 +282,39 @@ public class BroadcasterAppV2 extends StreamingApplication implements Connection
 		return missing;
 	}
 	
-	//tawagon ko ini once, if may urgent messages na isesend
-	private void removeBufferedMessages(DTNHost host, long firstUrgent){
-
-		List<Tuple<Message, Connection>> msgs = ((TVProphetRouter) host.getRouter()).getMessagesForConnected();
-	
-		System.out.println("@removeBufferedMsgs" + msgs.size());
+	private void evaluateMissing(ArrayList<StreamChunk> chunks, DTNHost host, DTNHost to){
+		System.out.println("Evaluating fragments.");
 		
-		for(Tuple<Message, Connection> m : msgs){
-			
-			try{
-				Message stored = m.getKey();
-				System.out.println("StoredMsg: "+stored);
+		ArrayList<Long> cIds = new ArrayList<Long>();
+		
+		for (StreamChunk ch : chunks){
+			cIds.add(ch.getChunkID());
+		}
+		
+		for(int i=0; i<chunks.size(); i++){
+			StreamChunk c  = chunks.get(i);
+			int fID = c.getFragmentIndex();
+			System.out.println("Ev Missing: "  + c.getChunkID() + " fID: "+fID);
+			if (fragment.doesExist(fID)){
+				sendFragment(fID, host, to, 0); //no fragment level yet
 				
-				StreamChunk chunk = (StreamChunk) stored.getProperty("chunk");
-				if (chunk.getChunkID() < firstUrgent){
-						host.getRouter().deleteMessage(stored.getId(), false);
-						System.out.println("Stored deleted.");
+				Fragment f = fragment.getFragment(fID);	
+				System.out.println(fID + f.getEndChunk());
+				System.out.println("If missing contains: " +cIds.contains(f.getEndChunk()+1) + 
+						" index of missing: " + cIds.indexOf(f.getEndChunk() + 1) );
+				
+				if ( stream.getChunk(f.getEndChunk()+1)!= null && 
+						cIds.contains(f.getEndChunk() + 1) ){ 	
+					i = cIds.indexOf(f.getEndChunk());
 				}
-			}catch(NullPointerException e){}
+				else{	
+					break;
+				}
+			}
+			else{ //fragment does not exist, send chunk as usual
+				this.sendChunk(c, host, to);
+				i++;
+			}
 		}
 	}
 	
@@ -335,24 +325,5 @@ public class BroadcasterAppV2 extends StreamingApplication implements Connection
 
 	public double getSTime(){
 		return sTime;
-	}
-	
-	@Override
-	public void hostsConnected(DTNHost host1, DTNHost host2) {
-//		System.out.println("HOSTS Connected: " + host1 + " : " + host2);
-		
-	}
-
-	@Override
-	public void hostsDisconnected(DTNHost host1, DTNHost host2) {
-//		System.out.println("HOSTS not connected anymore: " + host1 + " : " +host2);
-		
-		if(receivedHello.contains(host1)){
-			receivedHello.remove(host1);
-		}
-		else if(receivedHello.contains(host2)){
-			receivedHello.remove(host2);
-		}
-	}
-	
+	}	
 }

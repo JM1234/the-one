@@ -9,7 +9,10 @@ import streaming.StreamChunk;
 public class SADFragmentation {
 	
 	// equated to per chunk size and index level size
-	public static final int NO_OF_CHUNKS_PER_FRAG = 300;
+	public static final int NO_OF_CHUNKS_PER_FRAG = 60;
+	public static final int INDEX_LEVEL =1;
+	public static final int TRANS_LEVEL =2;
+	
 	/*
 	 * bluetooth: 3200 kBps = 25Mbps
 	 * wifidirect: 32000 kBps = 250Mbps

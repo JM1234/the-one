@@ -35,9 +35,9 @@ public class EpidemicRouter extends ActiveRouter {
 	@Override
 	public void update() {
 		super.update();
-		if (isTransferring() || !canStartTransfer()) {
-			return; // transferring, don't try other connections yet
-		}
+//		if (isTransferring() || !canStartTransfer()) {
+//			return; // transferring, don't try other connections yet
+//		}
 
 		// Try first the messages that can be delivered to final recipient
 		if (exchangeDeliverableMessages() != null) {
@@ -56,21 +56,5 @@ public class EpidemicRouter extends ActiveRouter {
 	@Override
 	public void changedConnection(Connection con) {
 		super.changedConnection(con);
-		
-//		if(con.isUp()){
-//			System.out.println("HELLO CONNECTION!!!");
-//		}	
 	}
-	
-	@Override
-	protected void transferAborted(Connection con) {
-		super.transferAborted(con);
-
-//		con.getMessage()
-//		this.getMessagesForConnected()
-//		con.getMessage()
-		System.out.println("transferred: " + con.getTotalBytesTransferred());
-	}
-	
-
 }

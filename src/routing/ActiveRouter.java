@@ -60,9 +60,9 @@ public abstract class ActiveRouter extends MessageRouter {
 		super(s);
 
 		this.policy = new MessageTransferAcceptPolicy(s);
+		this.deleteDelivered = s.getBoolean(DELETE_DELIVERED_S, true);
 
-		this.deleteDelivered = s.getBoolean(DELETE_DELIVERED_S, false);
-
+		
 		if (s.contains(EnergyModel.INIT_ENERGY_S)) {
 			this.energy = new EnergyModel(s);
 		} else {
@@ -231,10 +231,11 @@ public abstract class ActiveRouter extends MessageRouter {
 	 * does not fit into buffer
 	 */
 	protected int checkReceiving(Message m, DTNHost from) {
-		if (isTransferring()) {
-			return TRY_LATER_BUSY; // only one connection at a time
-		}
-
+//		if (isTransferring()) {
+//			System.out.println("TRY LATER BUSY");
+//			return TRY_LATER_BUSY; // only one connection at a time
+//		}
+//		
 		if ( hasMessage(m.getId()) || isDeliveredMessage(m) ||
 				super.isBlacklistedMessage(m.getId())) {
 			return DENIED_OLD; // already seen this message -> reject it
@@ -242,6 +243,7 @@ public abstract class ActiveRouter extends MessageRouter {
 
 		if (m.getTtl() <= 0 && m.getTo() != getHost()) {
 			/* TTL has expired and this host is not the final recipient */
+			System.out.println("DENIED TTL");
 			return DENIED_TTL;
 		}
 
@@ -250,11 +252,13 @@ public abstract class ActiveRouter extends MessageRouter {
 		}
 
 		if (!policy.acceptReceiving(from, getHost(), m)) {
+			System.out.println("DENIED POLICY");
 			return MessageRouter.DENIED_POLICY;
 		}
 
 		/* remove oldest messages but not the ones being sent */
 		if (!makeRoomForMessage(m.getSize())) {
+			System.out.println("DENIED NO SPACE");
 			return DENIED_NO_SPACE; // couldn't fit into buffer -> reject
 		}
 
@@ -359,7 +363,9 @@ public abstract class ActiveRouter extends MessageRouter {
 
 		List<Tuple<Message, Connection>> forTuples =
 			new ArrayList<Tuple<Message, Connection>>();
+		
 		for (Message m : getMessageCollection()) {
+			
 			for (Connection con : getConnections()) {
 				DTNHost to = con.getOtherNode(getHost());
 				if (m.getTo() == to) {
@@ -381,6 +387,9 @@ public abstract class ActiveRouter extends MessageRouter {
 	 */
 	protected Tuple<Message, Connection> tryMessagesForConnected(
 			List<Tuple<Message, Connection>> tuples) {
+		
+		Tuple<Message, Connection> tuple = null;
+
 		if (tuples.size() == 0) {
 			return null;
 		}
@@ -388,16 +397,16 @@ public abstract class ActiveRouter extends MessageRouter {
 		for (Tuple<Message, Connection> t : tuples) {
 			Message m = t.getKey();
 			Connection con = t.getValue();
-			if (startTransfer(m, con) == RCV_OK) {
-				return t;
+			if (startTransfer(m, con) == RCV_OK) { 
+				tuple = t;
 			}
 		}
-
-		return null;
+		
+		return tuple;
 	}
 
 	 /**
-	  * Goes trough the messages until the other node accepts one
+	  * Goes through the messages until the other node accepts one
 	  * for receiving (or doesn't accept any). If a transfer is started, the
 	  * connection is included in the list of sending connections.
 	  * @param con Connection trough which the messages are sent
@@ -528,23 +537,24 @@ public abstract class ActiveRouter extends MessageRouter {
 	 * some transfer has not been finalized.
 	 * @return true if this router is transferring something
 	 */
-	public boolean isTransferring() {
-		if (this.sendingConnections.size() > 0) {
-			return true; // sending something
-		}
-
+	public boolean isTransferring() { //di ak sure kun hain pa it iba na natawag hini aside
+//		if (this.sendingConnections.size() > 0 ) {
+//			return true; // sending something ////////what if idelete ko ini
+//		}
+		
 		List<Connection> connections = getConnections();
 
 		if (connections.size() == 0) {
 			return false; // not connected
 		}
 
-		for (int i=0, n=connections.size(); i<n; i++) {
-			Connection con = connections.get(i);
-			if (!con.isReadyForTransfer()) {
-				return true;	// a connection isn't ready for new transfer
-			}
-		}
+//		////ini nala na part akon diri sure
+//		for (int i=0, n=connections.size(); i<n; i++) {
+//			Connection con = connections.get(i);
+//			if (!con.isReadyForTransfer()) {
+//				return true;	// a connection isn't ready for new transfer
+//			}
+//		}
 
 		return false;
 	}
@@ -622,7 +632,7 @@ public abstract class ActiveRouter extends MessageRouter {
 			}
 		}
 
-		/* time to do a TTL check and drop old messages? Only if not sending */
+		/* time to do a TTL check and drop old messages? Only if not sending */ //magkakaprob if damo it sending connections
 		if (SimClock.getTime() - lastTtlCheck >= TTL_CHECK_INTERVAL &&
 				sendingConnections.size() == 0) {
 			dropExpiredMessages();
