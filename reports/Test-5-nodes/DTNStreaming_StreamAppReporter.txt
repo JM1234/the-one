@@ -1,0 +1,22 @@
+ --------w1---------->
+time_started_playing: 0.0
+time_last_played: 0.0
+number_of_times_interrupted: 0
+number_of_chunks_received (with duplicates): 2
+number_of_duplicate_chunks_received: 0
+chunks received: [0, 1]
+time_first_requested: 0.0
+time_first_chunk_received: 9.0
+number_of_times_requested: 2
+number_of_chunks_requested_again: 0
+ --------b0---------->
+time_started_playing: 0.0
+time_last_played: 0.0
+number_of_times_interrupted: 0
+number_of_chunks_received (with duplicates): 0
+number_of_duplicate_chunks_received: 0
+chunks received: []
+time_first_requested: 0.0
+time_first_chunk_received: 0.0
+number_of_times_requested: 0
+number_of_chunks_requested_again: 0

@@ -1,0 +1,9 @@
+Ping stats for scenario Test-5-nodes
+sim_time: 0.0000
+pings sent: 0
+pings received: 0
+pongs sent: 0
+pongs received: 0
+ping delivery prob: 0.0000
+pong delivery prob: 0.0000
+ping/pong success prob: 0.0000
